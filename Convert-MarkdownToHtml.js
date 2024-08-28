@@ -154,13 +154,18 @@ function GetDynamicLinkPathWith(markdown) {
 
 /**
  * Wait for the process exit.
- * @param {number} processId is the process identifier.
+ * @param {number} parentProcessId is the parent process identifier.
  */
-function WaitForExit(processId) {
-  try {
-    var moniker = 'winmgmts:Win32_Process=' + processId;
-    while (GetObject(moniker).Name == 'cmd.exe') { }
-  } catch (error) { }
+function WaitForExit(parentProcessId) {
+  // Select the process whose parent is the intermediate process used for executing the link.
+  var wmiQuery = 'SELECT * FROM Win32_Process WHERE Name="pwsh.exe" AND ParentProcessId=' + parentProcessId;
+  var getProcess = function() {
+    return (new Enumerator(GetObject('winmgmts:').ExecQuery(wmiQuery))).item();
+  }
+  // Wait for the process to start.
+  while (getProcess() == null) { }
+  // Wait for the process to exit.
+  while (getProcess() != null) { }
 }
 
 /**
