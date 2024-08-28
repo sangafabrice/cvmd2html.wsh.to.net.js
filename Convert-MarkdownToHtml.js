@@ -157,15 +157,12 @@ function GetDynamicLinkPathWith(markdown) {
  * @param {number} parentProcessId is the parent process identifier.
  */
 function WaitForExit(parentProcessId) {
+  // The process termination event query.
   // Select the process whose parent is the intermediate process used for executing the link.
-  var wmiQuery = 'SELECT * FROM Win32_Process WHERE Name="pwsh.exe" AND ParentProcessId=' + parentProcessId;
-  var getProcess = function() {
-    return (new Enumerator(GetObject('winmgmts:').ExecQuery(wmiQuery))).item();
-  }
-  // Wait for the process to start.
-  while (getProcess() == null) { }
+  var wmiQuery = 'SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA "Win32_Process" AND ' +
+    'TargetInstance.Name="pwsh.exe" AND TargetInstance.ParentProcessId=' + parentProcessId;
   // Wait for the process to exit.
-  while (getProcess() != null) { }
+  (new ActiveXObject('WbemScripting.SWbemLocator')).ConnectServer().ExecNotificationQuery(wmiQuery).NextEvent();
 }
 
 /**
