@@ -103,28 +103,11 @@ ShowHelp();
  * @param {string} markdown is the input markdown path argument.
  */
 function StartWith(markdown) {
-  // Create the intermediate link.
   var linkPath = GetDynamicLinkPathWith(markdown);
-  //Start the link.
-  var WINDOW_STYLE_HIDDEN = 0xC;
-  var startInfo = GetObject('winmgmts:Win32_ProcessStartup').SpawnInstance_();
-  startInfo.ShowWindow = WINDOW_STYLE_HIDDEN;
-  var processService = GetObject('winmgmts:Win32_Process');
-  var createMethod = processService.Methods_.Item('Create');
-  var inParam = createMethod.InParameters.SpawnInstance_();
-  inParam.CommandLine = Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath);
-  inParam.ProcessStartupInformation = startInfo;
-  WaitForExit(processService.ExecMethod_(createMethod.Name, inParam).ProcessId);
-  // Delete the link.
+  var WINDOW_STYLE_HIDDEN = 0;
+  var WAIT_ON_RETURN = true;
+  (new ActiveXObject('WScript.Shell')).Run(Format('"{0}"', linkPath), WINDOW_STYLE_HIDDEN, WAIT_ON_RETURN);
   (new ActiveXObject('Scripting.FileSystemObject')).DeleteFile(linkPath, true);
-  Marshal.FinalReleaseComObject(startInfo);
-  Marshal.FinalReleaseComObject(processService);
-  Marshal.FinalReleaseComObject(createMethod);
-  Marshal.FinalReleaseComObject(inParam);
-  startInfo = null;
-  processService = null;
-  createMethod = null;
-  inParam = null;
 }
 
 /**
@@ -138,8 +121,12 @@ function GetDynamicLinkPathWith(markdown) {
     '%TEMP%\\{0}.tmp.lnk',
     (new ActiveXObject('Scriptlet.TypeLib')).Guid.substr(1, 36).toLowerCase()
   )));
-  link.TargetPath = GetPwshPath();
-  link.Arguments = Format('-f "{0}" -Markdown "{1}"', [ChangeScriptExtension('.ps1'), markdown]);
+  // The HKLM registry subkey stores the PowerShell Core application path.
+  link.TargetPath = shell.RegRead('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe\\');
+  link.Arguments = Format(
+    '-ep Bypass -nop -w Hidden -f "{0}" -Markdown "{1}"',
+    [ChangeScriptExtension('.ps1'), markdown]
+  );
   link.IconLocation = ChangeScriptExtension('.ico');
   link.Save();
   try {
@@ -153,19 +140,6 @@ function GetDynamicLinkPathWith(markdown) {
 }
 
 /**
- * Wait for the process exit.
- * @param {number} parentProcessId is the parent process identifier.
- */
-function WaitForExit(parentProcessId) {
-  // The process termination event query.
-  // Select the process whose parent is the intermediate process used for executing the link.
-  var wmiQuery = 'SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA "Win32_Process" AND ' +
-    'TargetInstance.Name="pwsh.exe" AND TargetInstance.ParentProcessId=' + parentProcessId;
-  // Wait for the process to exit.
-  (new ActiveXObject('WbemScripting.SWbemLocator')).ConnectServer().ExecNotificationQuery(wmiQuery).NextEvent();
-}
-
-/**
  * Change the launcher assembly path extension.
  * This change implies that the launcher and the resulting
  * path file reside in the same directory and have the same name.
@@ -174,34 +148,6 @@ function WaitForExit(parentProcessId) {
  */
 function ChangeScriptExtension(extension) {
   return param.ApplicationPath.replace(/\.exe$/i, extension);
-}
-
-/**
- * Get the PowerShell Core application path from the registry.
- * @returns {string} the pwsh.exe full path or an empty string.
- */
-function GetPwshPath() {
-  var registry = GetObject('winmgmts:StdRegProv');
-  var getStringValueMethod = registry.Methods_.Item('GetStringValue');
-  var inParam = getStringValueMethod.InParameters.SpawnInstance_();
-  // The HKLM registry subkey stores the PowerShell Core application path.
-  inParam.sSubKeyName = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe';
-  var outParam = registry.ExecMethod_(getStringValueMethod.Name, inParam);
-  try {
-    if (!outParam.ReturnValue) {
-      return outParam.sValue;
-    }
-    return '';
-  } finally {
-    Marshal.FinalReleaseComObject(registry);
-    Marshal.FinalReleaseComObject(getStringValueMethod);
-    Marshal.FinalReleaseComObject(inParam);
-    Marshal.FinalReleaseComObject(outParam);
-    registry = null;
-    getStringValueMethod = null;
-    inParam = null;
-    outParam = null;
-  }
 }
 
 /**
