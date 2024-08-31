@@ -5,10 +5,26 @@
  * when the user clicks on the shortcut menu.
  * @version 0.0.1
  */
+@set @MAJOR = 0
+@set @MINOR = 0
+@set @BUILD = 1
+@set @REVISION = 0
+
+import System;
+import System.Runtime.InteropServices;
+import System.Reflection;
+
+[assembly: AssemblyProduct('MarkdownToHtml Shortcut')]
+[assembly: AssemblyInformationalVersion(@MAJOR + '.' + @MINOR + '.' + @BUILD + '.' + @REVISION)]
+[assembly: AssemblyCopyright('\u00A9 2024 sangafabrice')]
+[assembly: AssemblyCompany('sangafabrice')]
+[assembly: AssemblyVersion(@MAJOR + '.' + @MINOR + '.' + @BUILD + '.' + @REVISION)]
+[assembly: AssemblyTitle('CvMd2Html Launcher')]
 
 /**
  * The parameters and arguments.
  * @typedef {object} ParamHash
+ * @property {string} ApplicationPath is the assembly path.
  * @property {string} Markdown is the selected markdown file path.
  * @property {boolean} Set installs the shortcut menu.
  * @property {boolean} NoIcon installs the shortcut menu without icon.
@@ -17,11 +33,11 @@
  */
 
 /** @type {ParamHash} */
-var param = GetParameters();
+var param = GetParameters(Environment.GetCommandLineArgs());
 
 if (param.Markdown) {
   StartWith(param.Markdown);
-  WSH.Quit();
+  Quit(0);
 }
 
 if (param.Help) {
@@ -29,18 +45,14 @@ if (param.Help) {
 }
 
 if (param.Set || param.Unset) {
-  var HKCU = 0x80000001;
+  var HKCU = param.Set ? 0x80000001:-2147483647;
   var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
   var registry = GetObject('winmgmts:StdRegProv');
   if (param.Set) {
     var shortcutIconPath = ChangeScriptExtension('.ico');
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
-    var command = Format(
-      '{0} //E:jscript "{1}" /Markdown:"%1"',
-      WSH.FullName.replace(/\\cscript\.exe$/i, '\\wscript.exe'),
-      WSH.ScriptFullName
-    );
+    var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
     registry.CreateKey(HKCU, COMMAND_KEY);
     registry.SetStringValue(HKCU, COMMAND_KEY, null, command);
     registry.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
@@ -53,24 +65,34 @@ if (param.Set || param.Unset) {
   } else if (param.Unset) {
     // Remove the shortcut menu.
     // Remove the verb key and subkeys.
-    var enumKeyMethod = registry.Methods_('EnumKey');
+    var enumKeyMethod = registry.Methods_.Item('EnumKey');
     var inParam = enumKeyMethod.InParameters.SpawnInstance_();
     inParam.hDefKey = HKCU;
     // Recursion is used because a key with subkeys cannot be deleted.
     // Recursion helps removing the leaf keys first.
-    (function(key) {
-      inParam.sSubKeyName = key;
-      var sNames = registry.ExecMethod_(enumKeyMethod.Name, inParam).sNames;
-      if (sNames != null) {
-        sNames = sNames.toArray();
-        for (var index = 0; index < sNames.length; index++) {
-          arguments.callee(key + '\\' + sNames[index]);
+    var deleteVerbKey = function(key) {
+      var recursive = function func(key) {
+        inParam.sSubKeyName = key;
+        var sNames = registry.ExecMethod_(enumKeyMethod.Name, inParam).sNames;
+        if (sNames != null) {
+          for (var index = 0; index < sNames.length; index++) {
+            func(key + '\\' + sNames[index]);
+          }
         }
-      }
-      registry.DeleteKey(HKCU, key);
-    })(VERB_KEY);
+        registry.DeleteKey(HKCU, key);
+      };
+      recursive(key);
+    }
+    deleteVerbKey(VERB_KEY);
+    deleteVerbKey = null;
+    Marshal.FinalReleaseComObject(enumKeyMethod);
+    Marshal.FinalReleaseComObject(inParam);
+    enumKeyMethod = null;
+    inParam = null;
   }
-  WSH.Quit();
+  Marshal.FinalReleaseComObject(registry);
+  registry = null;
+  Quit(0);
 }
 
 ShowHelp();
@@ -88,13 +110,21 @@ function StartWith(markdown) {
   var startInfo = GetObject('winmgmts:Win32_ProcessStartup').SpawnInstance_();
   startInfo.ShowWindow = WINDOW_STYLE_HIDDEN;
   var processService = GetObject('winmgmts:Win32_Process');
-  var createMethod = processService.Methods_('Create');
+  var createMethod = processService.Methods_.Item('Create');
   var inParam = createMethod.InParameters.SpawnInstance_();
   inParam.CommandLine = Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath);
   inParam.ProcessStartupInformation = startInfo;
   WaitForExit(processService.ExecMethod_(createMethod.Name, inParam).ProcessId);
   // Delete the link.
-  WSH.CreateObject('Scripting.FileSystemObject').DeleteFile(linkPath, true);
+  (new ActiveXObject('Scripting.FileSystemObject')).DeleteFile(linkPath, true);
+  Marshal.FinalReleaseComObject(startInfo);
+  Marshal.FinalReleaseComObject(processService);
+  Marshal.FinalReleaseComObject(createMethod);
+  Marshal.FinalReleaseComObject(inParam);
+  startInfo = null;
+  processService = null;
+  createMethod = null;
+  inParam = null;
 }
 
 /**
@@ -103,16 +133,23 @@ function StartWith(markdown) {
  * @returns {string} the link path.
  */
 function GetDynamicLinkPathWith(markdown) {
-  var shell = WSH.CreateObject('WScript.Shell');
+  var shell = new ActiveXObject('WScript.Shell');
   var link = shell.CreateShortcut(shell.ExpandEnvironmentStrings(Format(
     '%TEMP%\\{0}.tmp.lnk',
-    WSH.CreateObject('Scriptlet.TypeLib').Guid.substr(1, 36).toLowerCase()
+    (new ActiveXObject('Scriptlet.TypeLib')).Guid.substr(1, 36).toLowerCase()
   )));
   link.TargetPath = GetPwshPath();
-  link.Arguments = Format('-f "{0}" -Markdown "{1}"', ChangeScriptExtension('.ps1'), markdown);
+  link.Arguments = Format('-f "{0}" -Markdown "{1}"', [ChangeScriptExtension('.ps1'), markdown]);
   link.IconLocation = ChangeScriptExtension('.ico');
   link.Save();
-  return link.FullName;
+  try {
+    return link.FullName;
+  } finally {
+    Marshal.FinalReleaseComObject(shell);
+    Marshal.FinalReleaseComObject(link);
+    shell = null;
+    link = null;
+  }
 }
 
 /**
@@ -127,14 +164,14 @@ function WaitForExit(processId) {
 }
 
 /**
- * Change the launcher script path extension.
- * This change implies that the launcher script and the resulting
+ * Change the launcher assembly path extension.
+ * This change implies that the launcher and the resulting
  * path file reside in the same directory and have the same name.
  * @param {string} extension is the new extension.
  * @returns {string} a file path with the new extension.
  */
 function ChangeScriptExtension(extension) {
-  return WSH.ScriptFullName.replace(/\.js$/i, extension);
+  return param.ApplicationPath.replace(/\.exe$/i, extension);
 }
 
 /**
@@ -143,15 +180,26 @@ function ChangeScriptExtension(extension) {
  */
 function GetPwshPath() {
   var registry = GetObject('winmgmts:StdRegProv');
-  var getStringValueMethod = registry.Methods_('GetStringValue');
+  var getStringValueMethod = registry.Methods_.Item('GetStringValue');
   var inParam = getStringValueMethod.InParameters.SpawnInstance_();
   // The HKLM registry subkey stores the PowerShell Core application path.
   inParam.sSubKeyName = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe';
   var outParam = registry.ExecMethod_(getStringValueMethod.Name, inParam);
-  if (!outParam.ReturnValue) {
-    return outParam.sValue;
+  try {
+    if (!outParam.ReturnValue) {
+      return outParam.sValue;
+    }
+    return '';
+  } finally {
+    Marshal.FinalReleaseComObject(registry);
+    Marshal.FinalReleaseComObject(getStringValueMethod);
+    Marshal.FinalReleaseComObject(inParam);
+    Marshal.FinalReleaseComObject(outParam);
+    registry = null;
+    getStringValueMethod = null;
+    inParam = null;
+    outParam = null;
   }
-  return '';
 }
 
 /**
@@ -161,7 +209,9 @@ function GetPwshPath() {
  * @returns {string} a copy of format with the format items replaced by args.
  */
 function Format(format, args) {
-  args = Array.prototype.slice.call(arguments).slice(1);
+  if (args.constructor !== Array) {
+    return format.replace(/\{0\}/g, args);
+  }
   while (args.length > 0) {
     format = format.replace(new RegExp('\\{' + (args.length - 1) + '\\}', 'g'), args.pop());
   }
@@ -170,38 +220,42 @@ function Format(format, args) {
 
 /**
  * Get the input arguments and parameters.
+ * @param {string[]} args is the list of command line arguments including the command path.
  * @returns {ParamHash|undefined} a value-name pair of arguments.
  */
-function GetParameters() {
-  var WshArguments = WSH.Arguments;
-  var WshNamed = WshArguments.Named;
-  var paramCount = WshArguments.Count();
-  if (paramCount == 1) {
-    var paramMarkdown = WshArguments.Named('Markdown');
-    if (WshNamed.Exists('Markdown') && paramMarkdown != undefined && paramMarkdown.length) {
-      return { Markdown: paramMarkdown };
-    }
-    var paramHelp = WshNamed.Exists('Help');
-    if (paramHelp) {
-      return { Help: paramHelp };
-    }
-    var param = { Set: WshNamed.Exists('Set') };
-    if (param.Set) {
-      var noIconParam = WshArguments.Named('Set');
-      var isNoIconParam = false;
-      param.NoIcon = noIconParam != undefined && (isNoIconParam = /^NoIcon$/i.test(noIconParam));
-      if (noIconParam == undefined || isNoIconParam) {
+function GetParameters(args) {
+  var applicationPath = args[0];
+  if (args.length == 2) {
+    var arg = args[1];
+    var param = { ApplicationPath: applicationPath };
+    var paramName = arg.split(':', 1)[0].toLowerCase();
+    if (paramName == '/markdown') {
+      param.Markdown = arg.replace(new RegExp('^' + paramName + ':?', 'i'), '')
+      if (param.Markdown.length > 0) {
         return param;
       }
     }
-    param = { Unset: WshNamed.Exists('Unset') };
-    if (param.Unset && WshArguments.Named('Unset') == undefined) {
-      return param;
+    switch (arg.toLowerCase()) {
+      case '/set':
+        param.Set = true;
+        param.NoIcon = false;
+        return param;
+      case '/set:noicon':
+        param.Set = true;
+        param.NoIcon = true;
+        return param;
+      case '/unset':
+        param.Unset = true;
+        return param;
+      case '/help':
+        param.Help = true;
+        return param;
     }
-  } else if (paramCount == 0) {
+  } else if (args.length == 1) {
     return {
       Set: true,
-      NoIcon: false
+      NoIcon: false,
+      ApplicationPath: applicationPath
     }
   }
   ShowHelp();
@@ -215,17 +269,24 @@ function ShowHelp() {
   helpText += 'The MarkdownToHtml shortcut launcher.\n';
   helpText += 'It starts the shortcut menu target script in a hidden window.\n\n';
   helpText += 'Syntax:\n';
-  helpText += '  Convert-MarkdownToHtml.js /Markdown:<markdown file path>\n';
-  helpText += '  Convert-MarkdownToHtml.js [/Set[:NoIcon]]\n';
-  helpText += '  Convert-MarkdownToHtml.js /Unset\n';
-  helpText += '  Convert-MarkdownToHtml.js /Help\n\n';
+  helpText += '  Convert-MarkdownToHtml /Markdown:<markdown file path>\n';
+  helpText += '  Convert-MarkdownToHtml [/Set[:NoIcon]]\n';
+  helpText += '  Convert-MarkdownToHtml /Unset\n';
+  helpText += '  Convert-MarkdownToHtml /Help\n\n';
   helpText += "<markdown file path>  The selected markdown's file path.\n";
   helpText += '                 Set  Configure the shortcut menu in the registry.\n';
   helpText += '              NoIcon  Specifies that the icon is not configured.\n';
   helpText += '               Unset  Removes the shortcut menu.\n';
   helpText += '                Help  Show the help doc.\n';
-  with (WSH) {
-    Echo(helpText);
-    Quit();
-  }
+  (new ActiveXObject('WScript.Shell')).Popup(helpText, 0);
+  Quit(1);
+}
+
+/**
+ * Clean up and quit.
+ * @param {number} exitCode .
+ */
+function Quit(exitCode) {
+  GC.Collect();
+  Environment.Exit(exitCode);
 }
