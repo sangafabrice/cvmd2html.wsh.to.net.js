@@ -57,6 +57,8 @@ Function Build-MarkdownToHtmlShortcut {
     Start-Sleep 5
   }
   Start-Process @StartArgs -ArgumentList '/Set'
+  # Set the custom icon with resource hacker.
+  [void] (& "$PSScriptRoot\rh.exe" -open $ConvertExe -save $ConvertExe -action addskip -res $(Set-ConvertMd2HtmlExtension '.ico') -mask ICONGROUP,MAINICON)
 }
 
 Build-MarkdownToHtmlShortcut -Debug:$($DebugPreference -eq 'Continue')
