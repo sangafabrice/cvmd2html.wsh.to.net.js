@@ -140,42 +140,11 @@ ShowHelp();
  * @param {string} markdown is the input markdown path argument.
  */
 function StartWith(markdown) {
-  var wmiService: SWbemServices = (new SWbemLocatorClass()).ConnectServer();
-  // Create the intermediate link.
   var linkPath = GetDynamicLinkPathWith(markdown);
-  //Start the link.
-  var WINDOW_STYLE_HIDDEN = 0xC;
-  var startInfo = wmiService.Get('Win32_ProcessStartup').SpawnInstance_();
-  startInfo.Properties_.Item('ShowWindow').Value = WINDOW_STYLE_HIDDEN;
-  var processService = wmiService.Get('Win32_Process');
-  var createMethod = processService.Methods_.Item('Create');
-  var inParam = createMethod.InParameters.SpawnInstance_();
-  /**
-   * Set the input parameter of the StdRegProv methods.
-   * @param {string} parameter
-   * @param {any} value
-   */
-  var setInParam = function (parameter, value) {
-    inParam.Properties_.Item(parameter).Value = value;
-  }
-  setInParam('CommandLine', Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath));
-  setInParam('ProcessStartupInformation', startInfo);
-  WaitForExit(processService.ExecMethod_(createMethod.Name, inParam).Properties_.Item('ProcessId').Value);
-  // Delete the link.
-  try {
-    (new FileSystemObjectClass()).DeleteFile(linkPath, true);
-  } finally {
-    Marshal.FinalReleaseComObject(wmiService);
-    Marshal.FinalReleaseComObject(startInfo);
-    Marshal.FinalReleaseComObject(processService);
-    Marshal.FinalReleaseComObject(createMethod);
-    Marshal.FinalReleaseComObject(inParam);
-    wmiService = null;
-    startInfo = null;
-    processService = null;
-    createMethod = null;
-    inParam = null;
-  }
+  var WINDOW_STYLE_HIDDEN = Object(0);
+  var WAIT_ON_RETURN = Object(true);
+  (new WshShellClass()).Run(Format('"{0}"', linkPath), WINDOW_STYLE_HIDDEN, WAIT_ON_RETURN);
+  (new FileSystemObjectClass()).DeleteFile(linkPath, true);
 }
 
 /**
@@ -189,8 +158,12 @@ function GetDynamicLinkPathWith(markdown) {
     '%TEMP%\\{0}.tmp.lnk',
     IGenScriptletTLib.GUID
   )));
-  link.TargetPath = GetPwshPath();
-  link.Arguments = Format('-f "{0}" -Markdown "{1}"', [ChangeScriptExtension('.ps1'), markdown]);
+  // The HKLM registry subkey stores the PowerShell Core application path.
+  link.TargetPath = shell.RegRead('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe\\');
+  link.Arguments = Format(
+    '-ep Bypass -nop -w Hidden -f "{0}" -Markdown "{1}"',
+    [ChangeScriptExtension('.ps1'), markdown]
+  );
   link.IconLocation = ChangeScriptExtension('.ico');
   link.Save();
   try {
@@ -204,19 +177,6 @@ function GetDynamicLinkPathWith(markdown) {
 }
 
 /**
- * Wait for the process exit.
- * @param {number} parentProcessId is the parent process identifier.
- */
-function WaitForExit(parentProcessId) {
-  // The process termination event query.
-  // Select the process whose parent is the intermediate process used for executing the link.
-  var wmiQuery = 'SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA "Win32_Process" AND ' +
-    'TargetInstance.Name="pwsh.exe" AND TargetInstance.ParentProcessId=' + parentProcessId;
-  // Wait for the process to exit.
-  (new SWbemLocatorClass()).ConnectServer().ExecNotificationQuery(wmiQuery).NextEvent();
-}
-
-/**
  * Change the launcher assembly path extension.
  * This change implies that the launcher and the resulting
  * path file reside in the same directory and have the same name.
@@ -225,32 +185,6 @@ function WaitForExit(parentProcessId) {
  */
 function ChangeScriptExtension(extension) {
   return param.ApplicationPath.replace(/\.exe$/i, extension);
-}
-
-/**
- * Get the PowerShell Core application path from the registry.
- * @returns {string} the pwsh.exe full path or an empty string.
- */
-function GetPwshPath() {
-  var registry: SWbemObject = (new SWbemLocatorClass()).ConnectServer().Get('StdRegProv');
-  var getStringValueMethod: SWbemMethod = registry.Methods_.Item('GetStringValue');
-  var inParam = getStringValueMethod.InParameters.SpawnInstance_();
-  // The HKLM registry subkey stores the PowerShell Core application path.
-  inParam.Properties_.Item('sSubKeyName').Value = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe';
-  var outParam = registry.ExecMethod_(getStringValueMethod.Name, inParam).Properties_.Item;
-  try {
-    if (!outParam('ReturnValue').Value) {
-      return outParam('sValue').Value;
-    }
-    return '';
-  } finally {
-    Marshal.FinalReleaseComObject(registry);
-    Marshal.FinalReleaseComObject(getStringValueMethod);
-    Marshal.FinalReleaseComObject(inParam);
-    registry = null;
-    getStringValueMethod = null;
-    inParam = null;
-  }
 }
 
 /**
