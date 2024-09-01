@@ -205,14 +205,19 @@ function GetDynamicLinkPathWith(markdown) {
 
 /**
  * Wait for the process exit.
- * @param {number} processId is the process identifier.
+ * @param {number} parentProcessId is the parent process identifier.
  */
-function WaitForExit(processId) {
+function WaitForExit(parentProcessId) {
   var wmiService: SWbemServices = (new SWbemLocatorClass()).ConnectServer();
-  try {
-    var path = 'Win32_Process=' + processId;
-    while (wmiService.Get(path).Properties_.Item('Name').Value == 'cmd.exe') { }
-  } catch (error) { }
+  // Select the process whose parent is the intermediate process used for executing the link.
+  var wmiQuery = 'SELECT * FROM Win32_Process WHERE Name="pwsh.exe" AND ParentProcessId=' + parentProcessId;
+  var getProcessCount = function() {
+    return wmiService.ExecQuery(wmiQuery).Count;
+  }
+  // Wait for the process to start.
+  while (getProcessCount() == 0) { }
+  // Wait for the process to exit.
+  while (getProcessCount()) { }
   Marshal.FinalReleaseComObject(wmiService);
   wmiService = null;
 }
