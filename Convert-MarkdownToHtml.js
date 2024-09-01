@@ -13,6 +13,9 @@
 import System;
 import System.Runtime.InteropServices;
 import System.Reflection;
+import IWshRuntimeLibrary;
+import WbemScripting;
+import Scriptlet;
 
 [assembly: AssemblyProduct('MarkdownToHtml Shortcut')]
 [assembly: AssemblyInformationalVersion(@MAJOR + '.' + @MINOR + '.' + @BUILD + '.' + @REVISION)]
@@ -45,53 +48,87 @@ if (param.Help) {
 }
 
 if (param.Set || param.Unset) {
-  var HKCU = param.Set ? 0x80000001:-2147483647;
+  /**
+   * @constant {int64} 0x80000001
+   * The real value is not returned because
+   * of overflow when casting int64 to int32.
+   */
+  var HKCU = -2147483647;
   var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
-  var registry = GetObject('winmgmts:StdRegProv');
+  var registry: SWbemObject = (new SWbemLocatorClass()).ConnectServer().Get('StdRegProv');
+  var getMethod = registry.Methods_.Item;
+  var execMethod = registry.ExecMethod_;
+  var inParam;
+  /**
+   * Set the input parameter of the StdRegProv methods.
+   * @param {string} parameter
+   * @param {any} value
+   */
+  var setInParam = function (parameter, value) {
+    inParam.Properties_.Item(parameter).Value = value;
+  }
   if (param.Set) {
-    var shortcutIconPath = ChangeScriptExtension('.ico');
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
     var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
-    registry.CreateKey(HKCU, COMMAND_KEY);
-    registry.SetStringValue(HKCU, COMMAND_KEY, null, command);
-    registry.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
-    var iconValueName = 'Icon';
+    var setStringValueMethod: SWbemMethod = getMethod('SetStringValue');
+    inParam = setStringValueMethod.InParameters.SpawnInstance_();
+    // Create the command key.
+    setInParam('hDefKey', HKCU);
+    setInParam('sSubKeyName', COMMAND_KEY);
+    // Reuse inParam spawned by setStringValueMethod in CreateKey signature.
+    execMethod('CreateKey', inParam);
+    // Set the command key default value.
+    setInParam('sValue', command);
+    execMethod(setStringValueMethod.Name, inParam);
+    // Set the verb key default value.
+    setInParam('sSubKeyName', VERB_KEY);
+    setInParam('sValue', 'Convert to &HTML');
+    execMethod(setStringValueMethod.Name, inParam);
+    setInParam('sValueName', 'Icon');
     if (param.NoIcon) {
-      registry.DeleteValue(HKCU, VERB_KEY, iconValueName);
+      // Remove the shortcut icon.
+      // Reuse inParam spawned by setStringValueMethod in DeleteValue signature.
+      execMethod('DeleteValue', inParam);
     } else {
-      registry.SetStringValue(HKCU, VERB_KEY, iconValueName, shortcutIconPath);
+      // Set the shortcut icon to the assembly main icon resource.
+      setInParam('sValue', ChangeScriptExtension('.ico'));
+      execMethod(setStringValueMethod.Name, inParam);
     }
+    Marshal.FinalReleaseComObject(setStringValueMethod);
+    setStringValueMethod = null;
   } else if (param.Unset) {
     // Remove the shortcut menu.
     // Remove the verb key and subkeys.
-    var enumKeyMethod = registry.Methods_.Item('EnumKey');
-    var inParam = enumKeyMethod.InParameters.SpawnInstance_();
-    inParam.hDefKey = HKCU;
+    var enumKeyMethod: SWbemMethod = getMethod('EnumKey');
+    inParam = enumKeyMethod.InParameters.SpawnInstance_();
+    setInParam('hDefKey', HKCU);
     // Recursion is used because a key with subkeys cannot be deleted.
     // Recursion helps removing the leaf keys first.
     var deleteVerbKey = function(key) {
       var recursive = function func(key) {
-        inParam.sSubKeyName = key;
-        var sNames = registry.ExecMethod_(enumKeyMethod.Name, inParam).sNames;
+        setInParam('sSubKeyName', key);
+        var sNames = execMethod(enumKeyMethod.Name, inParam).Properties_.Item('sNames').Value;
         if (sNames != null) {
           for (var index = 0; index < sNames.length; index++) {
             func(key + '\\' + sNames[index]);
           }
         }
-        registry.DeleteKey(HKCU, key);
+        // Reuse inParam spawned by enumKeyMethod in DeleteKey signature.
+        setInParam('sSubKeyName', key);
+        execMethod('DeleteKey', inParam)
       };
       recursive(key);
     }
     deleteVerbKey(VERB_KEY);
     deleteVerbKey = null;
     Marshal.FinalReleaseComObject(enumKeyMethod);
-    Marshal.FinalReleaseComObject(inParam);
     enumKeyMethod = null;
-    inParam = null;
   }
   Marshal.FinalReleaseComObject(registry);
+  Marshal.FinalReleaseComObject(inParam);
   registry = null;
+  inParam = null;
   Quit(0);
 }
 
@@ -103,28 +140,42 @@ ShowHelp();
  * @param {string} markdown is the input markdown path argument.
  */
 function StartWith(markdown) {
+  var wmiService: SWbemServices = (new SWbemLocatorClass()).ConnectServer();
   // Create the intermediate link.
   var linkPath = GetDynamicLinkPathWith(markdown);
   //Start the link.
   var WINDOW_STYLE_HIDDEN = 0xC;
-  var startInfo = GetObject('winmgmts:Win32_ProcessStartup').SpawnInstance_();
-  startInfo.ShowWindow = WINDOW_STYLE_HIDDEN;
-  var processService = GetObject('winmgmts:Win32_Process');
+  var startInfo = wmiService.Get('Win32_ProcessStartup').SpawnInstance_();
+  startInfo.Properties_.Item('ShowWindow').Value = WINDOW_STYLE_HIDDEN;
+  var processService = wmiService.Get('Win32_Process');
   var createMethod = processService.Methods_.Item('Create');
   var inParam = createMethod.InParameters.SpawnInstance_();
-  inParam.CommandLine = Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath);
-  inParam.ProcessStartupInformation = startInfo;
-  WaitForExit(processService.ExecMethod_(createMethod.Name, inParam).ProcessId);
+  /**
+   * Set the input parameter of the StdRegProv methods.
+   * @param {string} parameter
+   * @param {any} value
+   */
+  var setInParam = function (parameter, value) {
+    inParam.Properties_.Item(parameter).Value = value;
+  }
+  setInParam('CommandLine', Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath));
+  setInParam('ProcessStartupInformation', startInfo);
+  WaitForExit(processService.ExecMethod_(createMethod.Name, inParam).Properties_.Item('ProcessId').Value);
   // Delete the link.
-  (new ActiveXObject('Scripting.FileSystemObject')).DeleteFile(linkPath, true);
-  Marshal.FinalReleaseComObject(startInfo);
-  Marshal.FinalReleaseComObject(processService);
-  Marshal.FinalReleaseComObject(createMethod);
-  Marshal.FinalReleaseComObject(inParam);
-  startInfo = null;
-  processService = null;
-  createMethod = null;
-  inParam = null;
+  try {
+    (new FileSystemObjectClass()).DeleteFile(linkPath, true);
+  } finally {
+    Marshal.FinalReleaseComObject(wmiService);
+    Marshal.FinalReleaseComObject(startInfo);
+    Marshal.FinalReleaseComObject(processService);
+    Marshal.FinalReleaseComObject(createMethod);
+    Marshal.FinalReleaseComObject(inParam);
+    wmiService = null;
+    startInfo = null;
+    processService = null;
+    createMethod = null;
+    inParam = null;
+  }
 }
 
 /**
@@ -133,10 +184,10 @@ function StartWith(markdown) {
  * @returns {string} the link path.
  */
 function GetDynamicLinkPathWith(markdown) {
-  var shell = new ActiveXObject('WScript.Shell');
+  var shell: WshShell = new WshShellClass();
   var link = shell.CreateShortcut(shell.ExpandEnvironmentStrings(Format(
     '%TEMP%\\{0}.tmp.lnk',
-    (new ActiveXObject('Scriptlet.TypeLib')).Guid.substr(1, 36).toLowerCase()
+    IGenScriptletTLib.GUID
   )));
   link.TargetPath = GetPwshPath();
   link.Arguments = Format('-f "{0}" -Markdown "{1}"', [ChangeScriptExtension('.ps1'), markdown]);
@@ -157,10 +208,13 @@ function GetDynamicLinkPathWith(markdown) {
  * @param {number} processId is the process identifier.
  */
 function WaitForExit(processId) {
+  var wmiService: SWbemServices = (new SWbemLocatorClass()).ConnectServer();
   try {
-    var moniker = 'winmgmts:Win32_Process=' + processId;
-    while (GetObject(moniker).Name == 'cmd.exe') { }
+    var path = 'Win32_Process=' + processId;
+    while (wmiService.Get(path).Properties_.Item('Name').Value == 'cmd.exe') { }
   } catch (error) { }
+  Marshal.FinalReleaseComObject(wmiService);
+  wmiService = null;
 }
 
 /**
@@ -179,26 +233,24 @@ function ChangeScriptExtension(extension) {
  * @returns {string} the pwsh.exe full path or an empty string.
  */
 function GetPwshPath() {
-  var registry = GetObject('winmgmts:StdRegProv');
-  var getStringValueMethod = registry.Methods_.Item('GetStringValue');
+  var registry: SWbemObject = (new SWbemLocatorClass()).ConnectServer().Get('StdRegProv');
+  var getStringValueMethod: SWbemMethod = registry.Methods_.Item('GetStringValue');
   var inParam = getStringValueMethod.InParameters.SpawnInstance_();
   // The HKLM registry subkey stores the PowerShell Core application path.
-  inParam.sSubKeyName = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe';
-  var outParam = registry.ExecMethod_(getStringValueMethod.Name, inParam);
+  inParam.Properties_.Item('sSubKeyName').Value = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe';
+  var outParam = registry.ExecMethod_(getStringValueMethod.Name, inParam).Properties_.Item;
   try {
-    if (!outParam.ReturnValue) {
-      return outParam.sValue;
+    if (!outParam('ReturnValue').Value) {
+      return outParam('sValue').Value;
     }
     return '';
   } finally {
     Marshal.FinalReleaseComObject(registry);
     Marshal.FinalReleaseComObject(getStringValueMethod);
     Marshal.FinalReleaseComObject(inParam);
-    Marshal.FinalReleaseComObject(outParam);
     registry = null;
     getStringValueMethod = null;
     inParam = null;
-    outParam = null;
   }
 }
 
@@ -278,7 +330,7 @@ function ShowHelp() {
   helpText += '              NoIcon  Specifies that the icon is not configured.\n';
   helpText += '               Unset  Removes the shortcut menu.\n';
   helpText += '                Help  Show the help doc.\n';
-  (new ActiveXObject('WScript.Shell')).Popup(helpText, 0);
+  (new WshShellClass()).Popup(helpText, 0);
   Quit(1);
 }
 

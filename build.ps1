@@ -38,10 +38,17 @@ Function Build-MarkdownToHtmlShortcut {
     Write-Host
     Return
   }
+  # Import the dependency libraries.
+  $ScriptletDllPath = "$PSScriptRoot\Interop.Scriptlet.dll";
+  $SWbemDllPath = "$PSScriptRoot\Interop.WbemScripting.dll";
+  $WshDllPath = "$PSScriptRoot\Interop.IWshRuntimeLibrary.dll";
+  & "$PSScriptRoot\TlbImp.exe" /nologo /silent 'C:\Windows\System32\scrobj.dll'  /out:$ScriptletDllPath /namespace:Scriptlet
+  & "$PSScriptRoot\TlbImp.exe" /nologo /silent 'C:\Windows\System32\wshom.ocx'  /out:$WshDllPath /namespace:IWshRuntimeLibrary
+  & "$PSScriptRoot\TlbImp.exe" /nologo /silent 'C:\Windows\System32\wbem\wbemdisp.tlb' /out:$SWbemDllPath /namespace:WbemScripting
   # Compile the launcher script into an .exe file of the same base name.
   $EnvPath = $Env:Path
   $Env:Path = "$Env:windir\Microsoft.NET\Framework$(If ([Environment]::Is64BitOperatingSystem) { '64' })\v4.0.30319\;$Env:Path"
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /reference:$WshDllPath /reference:$SWbemDllPath /reference:$ScriptletDllPath /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs
