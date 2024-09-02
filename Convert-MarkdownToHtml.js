@@ -4,6 +4,9 @@
  */
 import System;
 import System.Runtime.InteropServices;
+import IWshRuntimeLibrary;
+import mshtml;
+import ROOT.CIMV2;
 
 /**
  * The parameters and arguments.
@@ -24,7 +27,7 @@ if (param.Markdown) {
 /* The app module */
 
 // The file system object must be initialized first.
-var fs = new ActiveXObject('Scripting.FileSystemObject');
+var fs: FileSystemObject = new FileSystemObjectClass();
 /** @class */
 var MessageBox = GetMessageBoxType();
 /** @constant {regexp} */
@@ -63,7 +66,7 @@ function ConvertTo(htmlPath) {
 function SetHtmlContent(htmlPath, htmlContent) {
   var FOR_WRITING = 2;
   try {
-    var txtStream = fs.OpenTextFile(htmlPath, FOR_WRITING, true);
+    var txtStream: TextStream = fs.OpenTextFile(htmlPath, FOR_WRITING, true);
     txtStream.Write(htmlContent);
   } catch (error) {
     if (error.number == -2146828218) {
@@ -120,7 +123,7 @@ function GetContent(filePath) {
  */
 function ConvertFrom(markdownContent) {
   // Build the HTML document that will load the showdown.js library.
-  var document = new ActiveXObject('htmlFile');
+  var document: HTMLDocumentClass = new HTMLDocumentClass();
   document.open();
   document.IHTMLDocument2_write(GetContent(ChangeScriptExtension('.html')));
   document.body.innerHTML = markdownContent;
@@ -185,7 +188,7 @@ function GetMessageBoxType() {
     // The error message box shows the OK button alone.
     // The warning message box shows the alternative Yes or No buttons.
     messageType += messageType == ERROR_MESSAGE ? OK_BUTTON:YESNO_BUTTON;
-    switch ((new ActiveXObject('WScript.Shell')).Popup(message, NO_MESSAGE_TIMEOUT, MESSAGE_BOX_TITLE, messageType)) {
+    switch ((new WshShellClass()).Popup(message, Object(NO_MESSAGE_TIMEOUT), Object(MESSAGE_BOX_TITLE), Object(messageType))) {
       case OK_POPUPRESULT:
       case NO_POPUPRESULT:
         ReleaseFileSystemComObject();
@@ -212,52 +215,41 @@ if (param.Help) {
 
 /* Configuration and settings */
 if (param.Set || param.Unset) {
-  var HKCU = param.Set ? 0x80000001:-2147483647;
+  var HKCU: uint = 0x80000001;
   var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
-  var registry = GetObject('winmgmts:StdRegProv');
   if (param.Set) {
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
     var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
-    registry.CreateKey(HKCU, COMMAND_KEY);
-    registry.SetStringValue(HKCU, COMMAND_KEY, null, command);
-    registry.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
+    StdRegProv.CreateKey(HKCU, COMMAND_KEY);
+    StdRegProv.SetStringValue(HKCU, COMMAND_KEY, null, command);
+    StdRegProv.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
     var iconValueName = 'Icon';
     if (param.NoIcon) {
-      registry.DeleteValue(HKCU, VERB_KEY, iconValueName);
+      StdRegProv.DeleteValue(HKCU, VERB_KEY, iconValueName);
     } else {
-      registry.SetStringValue(HKCU, VERB_KEY, iconValueName, param.ApplicationPath);
+      StdRegProv.SetStringValue(HKCU, VERB_KEY, iconValueName, param.ApplicationPath);
     }
   } else if (param.Unset) {
     // Remove the shortcut menu.
     // Remove the verb key and subkeys.
-    var enumKeyMethod = registry.Methods_.Item('EnumKey');
-    var inParam = enumKeyMethod.InParameters.SpawnInstance_();
-    inParam.hDefKey = HKCU;
     // Recursion is used because a key with subkeys cannot be deleted.
     // Recursion helps removing the leaf keys first.
     var deleteVerbKey = function(key) {
       var recursive = function func(key) {
-        inParam.sSubKeyName = key;
-        var sNames = registry.ExecMethod_(enumKeyMethod.Name, inParam).sNames;
+        var sNames = StdRegProv.EnumKey(HKCU, key);
         if (sNames != null) {
           for (var index = 0; index < sNames.length; index++) {
             func(key + '\\' + sNames[index]);
           }
         }
-        registry.DeleteKey(HKCU, key);
+        StdRegProv.DeleteKey(HKCU, key);
       };
       recursive(key);
     }
     deleteVerbKey(VERB_KEY);
     deleteVerbKey = null;
-    Marshal.FinalReleaseComObject(enumKeyMethod);
-    Marshal.FinalReleaseComObject(inParam);
-    enumKeyMethod = null;
-    inParam = null;
   }
-  Marshal.FinalReleaseComObject(registry);
-  registry = null;
   Quit(0);
 }
 
@@ -350,7 +342,7 @@ function ShowHelp() {
   helpText += '              NoIcon  Specifies that the icon is not configured.\n';
   helpText += '               Unset  Removes the shortcut menu.\n';
   helpText += '                Help  Show the help doc.\n';
-  (new ActiveXObject('WScript.Shell')).Popup(helpText, 0);
+  (new WshShellClass()).Popup(helpText, 0);
   Quit(1);
 }
 
