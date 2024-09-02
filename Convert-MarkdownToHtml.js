@@ -3,15 +3,16 @@
  * script with the selected markdown as an argument.
  * It aims to eliminate the flashing console window
  * when the user clicks on the shortcut menu.
- * @version 0.0.1
+ * @version 0.0.2
  */
 @set @MAJOR = 0
 @set @MINOR = 0
-@set @BUILD = 1
+@set @BUILD = 2
 @set @REVISION = 0
 
 import System;
 import System.Runtime.InteropServices;
+import Microsoft.VisualBasic.FileIO;
 import Microsoft.VisualBasic;
 import System.Reflection;
 
@@ -55,14 +56,6 @@ if (param.Set || param.Unset) {
     var VERBICON_VALUENAME = VERB_KEY + 'Icon';
     registry = new ActiveXObject('WScript.Shell');
     var shortcutIconPath = ChangeScriptExtension('.ico');
-    // Create the link with the partial "arguments" string.
-    var link = registry.CreateShortcut(ChangeScriptExtension('.lnk'));;
-    link.TargetPath = GetPwshPath();
-    link.Arguments = GetCustomIconLinkArguments();
-    link.IconLocation = shortcutIconPath;
-    link.Save();
-    Marshal.FinalReleaseComObject(link);
-    link = null;
     // Configure the shortcut menu in the registry.
     var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
     registry.RegWrite(COMMAND_KEY, command);
@@ -115,14 +108,43 @@ ShowHelp();
  * @param {string} markdown is the input markdown path argument.
  */
 function StartWith(markdown) {
-  var linkPath = ChangeScriptExtension('.lnk');
-  if (!IsLinkReady(linkPath)) {
-    return;
-  }
+  var linkPath = GetDynamicLinkPathWith(markdown);
+  var WAIT_ON_RETURN = true;
   Interaction.Shell(
-    Format('C:\\Windows\\System32\\cmd.exe /d /c ""{0}" "{1}""', [linkPath, markdown]),
-    AppWinStyle.Hide
+    Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath),
+    AppWinStyle.Hide,
+    WAIT_ON_RETURN
   );
+  FileSystem.DeleteFile(linkPath);
+}
+
+/**
+ * Save and get the dynamic link.
+ * @param {string} markdown is the input markdown path argument.
+ * @returns {string} the link path.
+ */
+function GetDynamicLinkPathWith(markdown) {
+  var shell = new ActiveXObject('WScript.Shell');
+  var link = shell.CreateShortcut(Format(
+    '{1}\\{0}.tmp.lnk',
+    [
+      Interaction.CreateObject('Scriptlet.TypeLib').Guid.substr(1, 36).toLowerCase(),
+      Interaction.Environ('TEMP')
+    ]
+  ));
+  // The HKLM registry subkey stores the PowerShell Core application path.
+  link.TargetPath = shell.RegRead('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe\\');
+  link.Arguments = Format('-f "{0}" -Markdown "{1}"', [ChangeScriptExtension('.ps1'), markdown]);
+  link.IconLocation = ChangeScriptExtension('.ico');
+  link.Save();
+  try {
+    return link.FullName;
+  } finally {
+    Marshal.FinalReleaseComObject(shell);
+    Marshal.FinalReleaseComObject(link);
+    shell = null;
+    link = null;
+  }
 }
 
 /**
@@ -134,48 +156,6 @@ function StartWith(markdown) {
  */
 function ChangeScriptExtension(extension) {
   return param.ApplicationPath.replace(/\.exe$/i, extension);
-}
-
-/**
- * Get the PowerShell Core application path from the registry.
- * @returns {string} the pwsh.exe full path or an empty string.
- */
-function GetPwshPath() {
-  // The HKLM registry subkey stores the PowerShell Core application path.
-  var PWSH_KEY = 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe\\';
-  return Interaction.CreateObject('WScript.Shell').RegRead(PWSH_KEY);
-}
-
-/**
- * Check the link target command.
- * @param {object} linkPath is the shortcut link path.
- * @returns {boolean} True if the target command is as expected, false otherwise.
- */
-function IsLinkReady(linkPath) {
-  var link = Interaction.CreateObject('WScript.Shell').CreateShortcut(linkPath);
-  var format = '{0} {1}';
-  try {
-    return Strings.StrComp(
-      Format(format, [link.TargetPath, link.Arguments]),
-      Format(format, [GetPwshPath(), GetCustomIconLinkArguments()]),
-      CompareMethod.Text
-    ) == 0;
-  } finally {
-    if (link != undefined) {
-      Marshal.FinalReleaseComObject(link);
-      link = null;
-    }
-  }
-}
-
-/**
- * Get the partial "arguments" property string of the custom icon link.
- * The command is partial because it does not include the markdown file path string.
- * The markdown file path string will be input when calling the shortcut link.
- * @returns {string} the "arguments" property of the custom icon link.
- */
-function GetCustomIconLinkArguments() {
-  return Format('-ep Bypass -nop -w Hidden -f "{0}" -Markdown', ChangeScriptExtension('.ps1'));
 }
 
 /**
