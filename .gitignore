@@ -1,0 +1,8 @@
+*.lnk
+*.exe
+*.res
+*.dll
+rh.*
+rc.exe
+TlbImp.exe
+COMMIT.LOG
