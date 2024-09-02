@@ -5,8 +5,8 @@
 import System;
 import System.Runtime.InteropServices;
 import IWshRuntimeLibrary;
-import WbemScripting;
 import mshtml;
+import ROOT.CIMV2;
 
 /**
  * The parameters and arguments.
@@ -215,87 +215,41 @@ if (param.Help) {
 
 /* Configuration and settings */
 if (param.Set || param.Unset) {
-  /**
-   * @constant {uint} 0x80000001
-   * The real value is not returned because
-   * of overflow when casting uint to int32.
-   */
-  var HKCU = -2147483647;
+  var HKCU: uint = 0x80000001;
   var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
-  var registry: SWbemObject = (new SWbemLocatorClass()).ConnectServer().Get('StdRegProv');
-  var getMethod = registry.Methods_.Item;
-  var execMethod = registry.ExecMethod_;
-  var inParam;
-  /**
-   * Set the input parameter of the StdRegProv methods.
-   * @param {string} parameter
-   * @param {any} value
-   */
-  var setInParam = function (parameter, value) {
-    inParam.Properties_.Item(parameter).Value = value;
-  }
   if (param.Set) {
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
     var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
-    var setStringValueMethod: SWbemMethod = getMethod('SetStringValue');
-    inParam = setStringValueMethod.InParameters.SpawnInstance_();
-    // Create the command key.
-    setInParam('hDefKey', HKCU);
-    setInParam('sSubKeyName', COMMAND_KEY);
-    // Reuse inParam spawned by setStringValueMethod in CreateKey signature.
-    execMethod('CreateKey', inParam);
-    // Set the command key default value.
-    setInParam('sValue', command);
-    execMethod(setStringValueMethod.Name, inParam);
-    // Set the verb key default value.
-    setInParam('sSubKeyName', VERB_KEY);
-    setInParam('sValue', 'Convert to &HTML');
-    execMethod(setStringValueMethod.Name, inParam);
-    setInParam('sValueName', 'Icon');
+    StdRegProv.CreateKey(HKCU, COMMAND_KEY);
+    StdRegProv.SetStringValue(HKCU, COMMAND_KEY, null, command);
+    StdRegProv.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
+    var iconValueName = 'Icon';
     if (param.NoIcon) {
-      // Remove the shortcut icon.
-      // Reuse inParam spawned by setStringValueMethod in DeleteValue signature.
-      execMethod('DeleteValue', inParam);
+      StdRegProv.DeleteValue(HKCU, VERB_KEY, iconValueName);
     } else {
-      // Set the shortcut icon to the assembly main icon resource.
-      setInParam('sValue', param.ApplicationPath);
-      execMethod(setStringValueMethod.Name, inParam);
+      StdRegProv.SetStringValue(HKCU, VERB_KEY, iconValueName, param.ApplicationPath);
     }
-    Marshal.FinalReleaseComObject(setStringValueMethod);
-    setStringValueMethod = null;
   } else if (param.Unset) {
     // Remove the shortcut menu.
     // Remove the verb key and subkeys.
-    var enumKeyMethod: SWbemMethod = getMethod('EnumKey');
-    inParam = enumKeyMethod.InParameters.SpawnInstance_();
-    setInParam('hDefKey', HKCU);
     // Recursion is used because a key with subkeys cannot be deleted.
     // Recursion helps removing the leaf keys first.
     var deleteVerbKey = function(key) {
       var recursive = function func(key) {
-        setInParam('sSubKeyName', key);
-        var sNames = execMethod(enumKeyMethod.Name, inParam).Properties_.Item('sNames').Value;
+        var sNames = StdRegProv.EnumKey(HKCU, key);
         if (sNames != null) {
           for (var index = 0; index < sNames.length; index++) {
             func(key + '\\' + sNames[index]);
           }
         }
-        // Reuse inParam spawned by enumKeyMethod in DeleteKey signature.
-        setInParam('sSubKeyName', key);
-        execMethod('DeleteKey', inParam)
+        StdRegProv.DeleteKey(HKCU, key);
       };
       recursive(key);
     }
     deleteVerbKey(VERB_KEY);
     deleteVerbKey = null;
-    Marshal.FinalReleaseComObject(enumKeyMethod);
-    enumKeyMethod = null;
   }
-  Marshal.FinalReleaseComObject(registry);
-  Marshal.FinalReleaseComObject(inParam);
-  registry = null;
-  inParam = null;
   Quit(0);
 }
 
