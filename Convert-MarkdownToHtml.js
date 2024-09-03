@@ -1,10 +1,11 @@
 /**
  * @file Converts markdown file content to html document.
- * @version 1.0.0
+ * @version 1.0.0.2
  */
 import System;
 import System.Runtime.InteropServices;
-import IWshRuntimeLibrary;
+import Microsoft.VisualBasic.FileIO;
+import Microsoft.VisualBasic;
 import mshtml;
 import ROOT.CIMV2;
 
@@ -26,15 +27,12 @@ if (param.Markdown) {
 (function() {
 /* The app module */
 
-// The file system object must be initialized first.
-var fs: FileSystemObject = new FileSystemObjectClass();
 /** @class */
 var MessageBox = GetMessageBoxType();
 /** @constant {regexp} */
 var MARKDOWN_REGEX = /\.md$/i;
 CheckMarkdown();
 ConvertTo(GetHtmlPath());
-ReleaseFileSystemComObject();
 Quit(0);
 
 /**
@@ -44,7 +42,7 @@ function CheckMarkdown() {
   if (!MARKDOWN_REGEX.test(param.Markdown)) {
     MessageBox.Show(Format('"{0}" is not a markdown (.md) file.', param.Markdown));
   }
-  if (!fs.FileExists(param.Markdown)) {
+  if (!FileSystem.FileExists(param.Markdown)) {
     MessageBox.Show(Format('"{0}" cannot be found.', param.Markdown));
   }
 }
@@ -54,7 +52,7 @@ function CheckMarkdown() {
  * @param {string} htmlPath is the output html path.
  */
 function ConvertTo(htmlPath) {
-  SetHtmlContent(htmlPath, ConvertFrom(GetContent(param.Markdown)));
+  SetHtmlContent(htmlPath, ConvertFrom(FileSystem.ReadAllText(param.Markdown)));
 }
 
 /**
@@ -64,21 +62,13 @@ function ConvertTo(htmlPath) {
  * @param {string} htmlContent is the content of the html file.
  */
 function SetHtmlContent(htmlPath, htmlContent) {
-  var FOR_WRITING = 2;
   try {
-    var txtStream: TextStream = fs.OpenTextFile(htmlPath, FOR_WRITING, true);
-    txtStream.Write(htmlContent);
+    FileSystem.WriteAllText(htmlPath, htmlContent, false);
   } catch (error) {
-    if (error.number == -2146828218) {
+    if (error.number == -2146823266) {
       MessageBox.Show(Format('Access to the path "{0}" is denied.', htmlPath));
     } else {
       MessageBox.Show(Format('Unspecified error trying to write to "{0}".', htmlPath));
-    }
-  } finally {
-    if (txtStream != undefined) {
-      txtStream.Close();
-      Marshal.FinalReleaseComObject(txtStream);
-      txtStream = null;
     }
   }
 }
@@ -91,29 +81,15 @@ function SetHtmlContent(htmlPath, htmlContent) {
  */
 function GetHtmlPath() {
   var htmlPath = param.Markdown.replace(MARKDOWN_REGEX, '.html');
-  if (fs.FileExists(htmlPath)) {
+  if (FileSystem.FileExists(htmlPath)) {
     MessageBox.Show(
       Format('The file "{0}" already exists.\n\nDo you want to overwrite it?', htmlPath),
       MessageBox.WARNING
     );
-  } else if (fs.FolderExists(htmlPath)) {
+  } else if (FileSystem.DirectoryExists(htmlPath)) {
     MessageBox.Show(Format('"{0}" cannot be overwritten because it is a directory.', htmlPath));
   }
   return htmlPath;
-}
-
-/**
- * Get the content of a file.
- * @param {string} filePath is path that is read.
- * @returns {string} the content of the file.
- */
-function GetContent(filePath) {
-  var FOR_READING = 1;
-  with (fs.OpenTextFile(filePath, FOR_READING)) {
-    var content = ReadAll();
-    Close();
-  }
-  return content;
 }
 
 /**
@@ -125,7 +101,7 @@ function ConvertFrom(markdownContent) {
   // Build the HTML document that will load the showdown.js library.
   var document: HTMLDocumentClass = new HTMLDocumentClass();
   document.open();
-  document.IHTMLDocument2_write(GetContent(ChangeScriptExtension('.html')));
+  document.IHTMLDocument2_write(FileSystem.ReadAllText(ChangeScriptExtension('.html')));
   document.body.innerHTML = markdownContent;
   document.parentWindow.execScript('convertMarkdown()', 'javascript');
   try {
@@ -145,20 +121,6 @@ function ConvertFrom(markdownContent) {
 function GetMessageBoxType() {
   /** @private @constant {number} */
   var MESSAGE_BOX_TITLE = 'Convert to HTML';
-  /** @private @constant {number} */
-  var NO_MESSAGE_TIMEOUT = 0;
-  /** @private @constant {number} */
-  var YESNO_BUTTON = 4;
-  /** @private @constant {number} */
-  var OK_BUTTON = 0;
-  /** @private @constant {number} */
-  var OK_POPUPRESULT = 1;
-  /** @private @constant {number} */
-  var NO_POPUPRESULT = 7;
-  /** @private @constant {number} */
-  var ERROR_MESSAGE = 16;
-  /** @private @constant {number} */
-  var WARNING_MESSAGE = 48;
 
   /**
    * Represents the markdown conversion message box.
@@ -168,7 +130,7 @@ function GetMessageBoxType() {
   var MessageBox = { };
 
   /** @public @static @readonly @property {number} */
-  MessageBox.WARNING = WARNING_MESSAGE;
+  MessageBox.WARNING = MsgBoxStyle.Exclamation;
   // Object.defineProperty() method does not work in WSH.
   // It is not possible in this implementation to make the
   // property non-writable.
@@ -182,29 +144,25 @@ function GetMessageBoxType() {
    * @returns {string|void} "Yes" or "No" depending on the user's click when the message box is a warning.
    */
   MessageBox.Show = function(message, messageType) {
-    if (messageType != ERROR_MESSAGE && messageType != WARNING_MESSAGE) {
-      messageType = ERROR_MESSAGE;
+    if (messageType != MsgBoxStyle.Critical && messageType != MsgBoxStyle.Exclamation) {
+      messageType = MsgBoxStyle.Critical;
     }
     // The error message box shows the OK button alone.
     // The warning message box shows the alternative Yes or No buttons.
-    messageType += messageType == ERROR_MESSAGE ? OK_BUTTON:YESNO_BUTTON;
-    switch ((new WshShellClass()).Popup(message, Object(NO_MESSAGE_TIMEOUT), Object(MESSAGE_BOX_TITLE), Object(messageType))) {
-      case OK_POPUPRESULT:
-      case NO_POPUPRESULT:
-        ReleaseFileSystemComObject();
-        Quit(1);
+    messageType += messageType == MsgBoxStyle.Critical ? MsgBoxStyle.OkOnly:MsgBoxStyle.YesNo;
+    if (
+      Strings.Filter(
+        String[]([' OK ', ' No ']),
+        Format(' {0} ', Interaction.MsgBox(String(message), messageType, MESSAGE_BOX_TITLE)),
+        true,
+        CompareMethod.Text
+      ).length > 0
+    ) {
+      Quit(1);
     }
   }
 
   return MessageBox;
-}
-
-/**
- * Marshalling file system COM object.
- */
-function ReleaseFileSystemComObject() {
-  Marshal.FinalReleaseComObject(fs);
-  fs = null;
 }
 })();
 }
@@ -274,10 +232,10 @@ function ChangeScriptExtension(extension) {
  */
 function Format(format, args) {
   if (args.constructor !== Array) {
-    return format.replace(/\{0\}/g, args);
+    return Strings.Replace(format, '{0}', args);
   }
   while (args.length > 0) {
-    format = format.replace(new RegExp('\\{' + (args.length - 1) + '\\}', 'g'), args.pop());
+    format = Strings.Replace(format, '{' + (args.length - 1) + '}', args.pop());
   }
   return format;
 }
@@ -342,7 +300,7 @@ function ShowHelp() {
   helpText += '              NoIcon  Specifies that the icon is not configured.\n';
   helpText += '               Unset  Removes the shortcut menu.\n';
   helpText += '                Help  Show the help doc.\n';
-  (new WshShellClass()).Popup(helpText, 0);
+  Interaction.MsgBox(String(helpText));
   Quit(1);
 }
 
