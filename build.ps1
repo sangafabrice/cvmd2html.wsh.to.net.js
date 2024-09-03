@@ -38,10 +38,12 @@ Function Build-MarkdownToHtmlShortcut {
     Write-Host
     Return
   }
+  # Set the windows resources file with the resource compiler.
+  & "$PSScriptRoot\rc.exe" /nologo /fo $(($TargetInfoResFile = Set-ConvertMd2HtmlExtension '.res')) $(Set-ConvertMd2HtmlExtension '.rc')
   # Compile the launcher script into an .exe file of the same base name.
   $EnvPath = $Env:Path
   $Env:Path = "$Env:windir\Microsoft.NET\Framework$(If ([Environment]::Is64BitOperatingSystem) { '64' })\v4.0.30319\;$Env:Path"
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs
