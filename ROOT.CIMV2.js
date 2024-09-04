@@ -30,14 +30,10 @@ package ROOT.CIMV2.WIN32 {
      */
     public static function WaitForExit(ParentProcessId: uint) {
       // Select the process whose parent is the intermediate process used for executing the link.
-      var wmiQuery = 'SELECT * FROM Win32_Process WHERE Name="pwsh.exe" AND ParentProcessId=' + ParentProcessId;
-      var getProcessCount = function() {
-        return (new ManagementObjectSearcher(wmiQuery)).Get().Count;
-      }
-      // Wait for the process to start.
-      while (getProcessCount() == 0) { }
+      var wmiQuery = 'SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA "Win32_Process" AND ' +
+        'TargetInstance.Name="pwsh.exe" AND TargetInstance.ParentProcessId=' + ParentProcessId;
       // Wait for the process to exit.
-      while (getProcessCount()) { }
+      (new ManagementEventWatcher(wmiQuery)).WaitForNextEvent();
     }
   }
 
