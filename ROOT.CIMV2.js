@@ -5,9 +5,6 @@
 import System;
 import System.Management;
 import System.Diagnostics;
-import System.Reflection;
-
-[assembly: AssemblyTitle('WIM Utilities')]
 
 package ROOT.CIMV2 {
 
@@ -125,6 +122,17 @@ package ROOT.CIMV2.WIN32 {
       inParams['CommandLine'] = CommandLine;
       inParams['ProcessStartupInformation'] = ProcessStartup.CreateInstance();
       return Convert.ToUInt32(classObj.InvokeMethod(methodName, inParams, null).Properties['ProcessId'].Value);
+    }
+
+    /**
+     * Wait for the specified process exit.
+     * @param ProcessId is the process identifier.
+     */
+    public static function WaitForExit(ProcessId: uint) {
+      try {
+        var path = 'Win32_Process=' + ProcessId;
+        while ((new ManagementObject(path)).Properties['Name'].Value == 'cmd.exe') { }
+      } catch (error) { }
     }
   }
 

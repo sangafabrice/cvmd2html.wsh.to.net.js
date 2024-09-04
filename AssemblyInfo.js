@@ -1,3 +1,4 @@
+@cc_on
 @set @MAJOR = 0
 @set @MINOR = 0
 @set @BUILD = 1
@@ -10,3 +11,8 @@ import System.Reflection;
 [assembly: AssemblyCopyright('\u00A9 2024 sangafabrice')]
 [assembly: AssemblyCompany('sangafabrice')]
 [assembly: AssemblyVersion(@MAJOR + '.' + @MINOR + '.' + @BUILD + '.' + @REVISION)]
+@if (@WimUtility)
+[assembly: AssemblyTitle('WIM Utilities')]
+@else
+[assembly: AssemblyTitle('CvMd2Html Launcher')]
+@end

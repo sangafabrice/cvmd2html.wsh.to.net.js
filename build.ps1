@@ -47,7 +47,7 @@ Function Build-MarkdownToHtmlShortcut {
   # & "$PSScriptRoot\mgmtclassgen.exe" StdRegProv /l cs /n root\cimv2 /p StdRegProv.cs
   # Compile the generated StdRegProv management class with mgmtclassgen.exe.
   # The class was modified so it can be used in JScript.NET with less effort.
-  jsc.exe /nologo /target:library /out:$(($RootCim2Dll = "$PSScriptRoot\ROOT.CIMV2.dll")) "$PSScriptRoot\AssemblyInfo.js" "$PSScriptRoot\ROOT.CIMV2.js"
+  jsc.exe /nologo /target:library /out:$(($RootCim2Dll = "$PSScriptRoot\ROOT.CIMV2.dll")) /define:WimUtility "$PSScriptRoot\AssemblyInfo.js" "$PSScriptRoot\ROOT.CIMV2.js"
   jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /reference:$WshDllPath /reference:$RootCim2Dll /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) "$PSScriptRoot\AssemblyInfo.js" $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {

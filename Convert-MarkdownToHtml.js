@@ -10,13 +10,9 @@ import System.IO;
 import System.Text;
 import System.Windows.Forms;
 import System.Runtime.InteropServices;
-import Microsoft.VisualBasic;
-import System.Reflection;
 import IWshRuntimeLibrary;
 import ROOT.CIMV2.WIN32;
 import ROOT.CIMV2;
-
-[assembly: AssemblyTitle('CvMd2Html Launcher')]
 
 /**
  * The parameters and arguments.
@@ -46,14 +42,6 @@ if (param.Set || param.Unset) {
   var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
   if (param.Set) {
     var shortcutIconPath = ChangeScriptExtension('.ico');
-    // Create the link with the partial "arguments" string.
-    var link = (new WshShellClass()).CreateShortcut(ChangeScriptExtension('.lnk'));;
-    link.TargetPath = GetPwshPath();
-    link.Arguments = GetCustomIconLinkArguments();
-    link.IconLocation = shortcutIconPath;
-    link.Save();
-    Marshal.FinalReleaseComObject(link);
-    link = null;
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
     var command = String.Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
@@ -81,11 +69,30 @@ ShowHelp();
  * @param {string} markdown is the input markdown path argument.
  */
 function StartWith(markdown) {
-  var linkPath = ChangeScriptExtension('.lnk');
-  if (!IsLinkReady(linkPath)) {
-    return;
+  var linkPath = GetDynamicLinkPathWith(markdown);
+  Process.WaitForExit(Process.Create(String.Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath)));
+  File.Delete(linkPath);
+}
+
+/**
+ * Save and get the dynamic link.
+ * @param {string} markdown is the input markdown path argument.
+ * @returns {string} the link path.
+ */
+function GetDynamicLinkPathWith(markdown) {
+  var link = (new WshShellClass()).CreateShortcut(
+    String.Format('{1}\\{0}.tmp.lnk', Guid.NewGuid(), Environment.ExpandEnvironmentVariables('%TEMP%'))
+  );
+  link.TargetPath = GetPwshPath();
+  link.Arguments = String.Format('-f "{0}" -Markdown "{1}"', ChangeScriptExtension('.ps1'), markdown);
+  link.IconLocation = ChangeScriptExtension('.ico');
+  link.Save();
+  try {
+    return link.FullName;
+  } finally {
+    Marshal.FinalReleaseComObject(link);
+    link = null;
   }
-  Process.Create(String.Format('C:\\Windows\\System32\\cmd.exe /d /c ""{0}" "{1}""', linkPath, markdown));
 }
 
 /**
@@ -107,38 +114,6 @@ function GetPwshPath() {
   var HKLM: uint = 0x80000002;
   // The HKLM registry subkey stores the PowerShell Core application path.
   return StdRegProv.GetStringValue(HKLM, 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', null);
-}
-
-/**
- * Check the link target command.
- * @param {object} linkPath is the shortcut link path.
- * @returns {boolean} True if the target command is as expected, false otherwise.
- */
-function IsLinkReady(linkPath) {
-  var link = (new WshShellClass()).CreateShortcut(linkPath);
-  var format = '{0} {1}';
-  try {
-    return String.Compare(
-      String.Format(format, link.TargetPath, link.Arguments),
-      String.Format(format, GetPwshPath(), GetCustomIconLinkArguments()),
-      StringComparison.OrdinalIgnoreCase
-    ) == 0;
-  } finally {
-    if (link != undefined) {
-      Marshal.FinalReleaseComObject(link);
-      link = null;
-    }
-  }
-}
-
-/**
- * Get the partial "arguments" property string of the custom icon link.
- * The command is partial because it does not include the markdown file path string.
- * The markdown file path string will be input when calling the shortcut link.
- * @returns {string} the "arguments" property of the custom icon link.
- */
-function GetCustomIconLinkArguments() {
-  return String.Format('-ep Bypass -nop -w Hidden -f "{0}" -Markdown', ChangeScriptExtension('.ps1'));
 }
 
 /**
