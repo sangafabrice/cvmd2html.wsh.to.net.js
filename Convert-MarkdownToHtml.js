@@ -26,210 +26,8 @@ import Microsoft.Win32;
 var param = GetParameters(Environment.GetCommandLineArgs());
 
 if (param.Markdown) {
-(function() {
-/* The watcher module */
-
-/** @class */
-var ConversionWatcher = GetConversionWatcherType();
-
-(new ConversionWatcher(param.Markdown)).Start();
-Quit(0);
-
-/**
- * @returns the ConversionWatcher type.
- */
-function GetConversionWatcherType() {
-  /** @class */
-  var MessageBox = GetMessageBoxType();
-
-  /**
-   * The specified Markdown path argument.
-   * @private @type {string}
-   */
-  var MarkdownPath;
-  /**
-   * The overwrite prompt text as read from the powershell core console host.
-   * @private @type {string}
-   */
-  var OverwritePromptText;
-
-  /**
-   * @class @constructs ConversionWatcher
-   * @param {string} markdown is the specified Markdown path argument.
-   */
-  function ConversionWatcher(markdown) {
-    MarkdownPath = markdown;
-    OverwritePromptText = new StringBuilder();
-  }
-
-  /**
-   * Execute the runner of the shortcut target script and wait for its exit.
-   * @public @memberof ConversionWatcher @instance
-   */
-  ConversionWatcher.prototype.Start = function() {
-    WaitForExit(StartPwshExeWithMarkdown());
-    // This method will run only once.
-    delete ConversionWatcher.prototype.Start;
-  }
-
-  /**
-   * Start a PowerShell Core process that runs the shortcut menu target
-   * script with the markdown path as the argument.
-   * The Try-Catch handles the errors thrown by the process. The Standard Error
-   * Stream encoding is not utf-8. For this reason, it surrounds the message with
-   * unwanted characters. The error message delimiter constant string separates
-   * the informative message from noisy characters.
-   * @private
-   * @returns {object} the process started by the built command.
-   */
-  function StartPwshExeWithMarkdown(): Process {
-    var pwshStartInfo = new ProcessStartInfo(
-      // The HKLM registry subkey stores the PowerShell Core application path.
-      Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null),
-      String.Format(
-        '-nop -ep Bypass -w Hidden -cwa "try{{ Import-Module $args[0]; {2} -MarkdownPath $args[1] }}' +
-        // Get uniform error messages format by handling them in a catch statement.
-        'catch {{ Write-Error $_.Exception.Message }}" "{0}" "{1}"',
-        ChangeScriptExtension('.psm1'), MarkdownPath, Path.GetFileNameWithoutExtension(param.ApplicationPath)
-      )
-    );
-    // Redirect streams to the launcher process.
-    with (pwshStartInfo) {
-      RedirectStandardOutput = true;
-      RedirectStandardInput = true;
-      RedirectStandardError = true;
-      CreateNoWindow = true;
-      UseShellExecute = false;
-    }
-    return Process.Start(pwshStartInfo);
-  }
-
-  /**
-   * Observe when the child process exits with or without an error.
-   * Call the appropriate handler for each outcome.
-   * @private
-   * @param {Process} pwshExe is the PowerShell Core process or child process.
-   * @param {boolean} pwshExe.HasExited specifies whether has completed.
-   * @param {number} pwshExe.ExitCode specifies that the process terminated with an error (!=0) or not (=0).
-   * @param {StreamReader} pwshExe.StandardOutput the standard output stream.
-   * @param {StreamReader} pwshExe.StandardError the standard error stream.
-   */
-  function WaitForExit(pwshExe) {
-    // Wait for the process to complete.
-    while (!pwshExe.HasExited) {
-      HandleOutputDataReceived(pwshExe, pwshExe.StandardOutput.ReadLine());
-    }
-    // When the process terminated with an error.
-    if (pwshExe.ExitCode) {
-      HandleErrorDataReceived(pwshExe.StandardError.ReadToEnd());
-    }
-    pwshExe.Close();
-    pwshExe.Dispose();
-  }
-
-  /**
-   * Show the overwrite prompt that the child process sends.
-   * Subsequently, wait for the user's response.
-   * Handle the event when the PowerShell Core (child) process
-   * redirects output to the parent Standard Output stream.
-   * @private
-   * @param {Process} pwshExe it the sender child process.
-   * @param {StreamWriter} pwshExe.StandardInput the standard input stream.
-   * @param {string} outData the output text line sent.
-   */
-  function HandleOutputDataReceived(pwshExe, outData) {
-    if (outData) {
-      // Show the message box when the text line is a question.
-      // Otherwise, append the text line to the overall message text variable.
-      if (outData.match(/\?\s*$/)) {
-        OverwritePromptText.AppendLine();
-        OverwritePromptText.AppendLine(outData);
-        // Write the user's choice to the child process console host.
-        pwshExe.StandardInput.WriteLine(MessageBox.Show(OverwritePromptText, MessageBox.WARNING));
-        // Optional
-        OverwritePromptText.Clear();
-      } else {
-        OverwritePromptText.AppendLine(outData);
-      }
-    }
-  }
-
-  /**
-   * Show the error message that the child process writes on the console host.
-   * It handles the event when the child process redirects errors to the parent Standard
-   * Error stream. Raised exceptions are terminating errors. Thus, this handler only notifies
-   * the user of an error and displays the error message. For this reason, this subroutine
-   * does not define the sender objPwshExe object parameter in its signature.
-   * @private
-   * @param {string} errData the error message text.
-   */
-  function HandleErrorDataReceived(errData) {
-    if (errData) {
-      // Remove the ANSI escaped characters from the error message data text.
-      MessageBox.Show(errData.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').Remove(0, 'Write-Error: '.length));
-    }
-  }
-
-  /**
-   * Represents the shortcut target script runner watcher.
-   * @typedef {object} ConversionWatcher
-   */
-  return ConversionWatcher;
-}
-
-/**
- * @returns the MessageBox type.
- */
-function GetMessageBoxType() {
-  /** @private @constant {string} */
-  var MESSAGE_BOX_TITLE = 'Convert to HTML';
-  /** 
-   * @private @constant
-   * Do not remove repetition. It is there to solve a bug.
-   */
-  var EXPECTED_DIALOGRESULT: System.Array = [DialogResult.Yes, DialogResult.No, DialogResult.No];
-
-  /**
-   * Represents the markdown conversion message box.
-   * @typedef {object} MessageBox
-   * @property {number} WARNING specifies that the dialog shows a warning message.
-   */
-  var MessageBox = { };
-
-  /** @public @static @readonly @property {number} */
-  MessageBox.WARNING = MessageBoxIcon.Exclamation;
-  // Object.defineProperty() method does not work in WSH.
-  // It is not possible in this implementation to make the
-  // property non-writable.
-
-  /**
-   * Show a warning message or an error message box.
-   * The function does not return anything when the message box is an error.
-   * @public @static @method Show @memberof MessageBox
-   * @param {string} message is the message text.
-   * @param {number} [messageType = ERROR_MESSAGE] message box type (Warning/Error).
-   * @returns {string|void} "Yes" or "No" depending on the user's click when the message box is a warning.
-   */
-  MessageBox.Show = function(message, messageType: MessageBoxIcon) {
-    if (messageType != MessageBoxIcon.Error && messageType != MessageBoxIcon.Exclamation) {
-      messageType = MessageBoxIcon.Error;
-    }
-    // The error message box shows the OK button alone.
-    // The warning message box shows the alternative Yes or No buttons.
-    var messageButton: MessageBoxButtons = messageType == MessageBoxIcon.Error ? MessageBoxButtons.OK:MessageBoxButtons.YesNo;
-    try {
-      return EXPECTED_DIALOGRESULT.GetValue(
-        System.Array.BinarySearch(
-          EXPECTED_DIALOGRESULT,
-          System.Windows.Forms.MessageBox.Show(message, MESSAGE_BOX_TITLE, messageButton, messageType)
-        )
-      );
-    } catch (error) { }
-  }
-
-  return MessageBox;
-}
-})();
+  (new ConversionWatcher(param.Markdown)).Start();
+  Quit(0);
 }
 
 if (param.Help) {
@@ -270,6 +68,174 @@ if (param.Set || param.Unset) {
 }
 
 ShowHelp();
+
+/**
+ * Represent the ConversionWatcher type.
+ */
+class ConversionWatcher {
+  /** @class */
+  static var MessageBox = GetMessageBoxType();
+
+  /**
+   * The specified Markdown path argument.
+   * @private @type {string}
+   */
+  var MarkdownPath;
+  /**
+   * The overwrite prompt text as read from the powershell core console host.
+   * @private @type {string}
+   */
+  var OverwritePromptText = new StringBuilder();
+
+  /**
+   * @class @constructs ConversionWatcher
+   * @param {string} markdown is the specified Markdown path argument.
+   */
+  function ConversionWatcher(markdown) {
+    MarkdownPath = markdown;
+  }
+  
+  /**
+   * Show the overwrite prompt that the child process sends.
+   * Subsequently, wait for the user's response.
+   * Handle the event when the PowerShell Core (child) process
+   * redirects output to the parent Standard Output stream.
+   * @param pwshExe it the sender child process.
+   * @param {object} pwshExe.StandardInput  the standard input stream.
+   * @param outEvtArgs the received output text line.
+   */
+  function HandleOutputDataReceived(pwshExe: Object, outEvtArgs: DataReceivedEventArgs) {
+    var outData = outEvtArgs.Data;
+    if (!String.IsNullOrEmpty(outData)) {
+      // Show the message box when the text line is a question.
+      // Otherwise, append the text line to the overall message text variable.
+      if (outData.match(/\?\s*$/)) {
+        OverwritePromptText.AppendLine();
+        OverwritePromptText.AppendLine(outData);
+        // Write the user's choice to the child process console host.
+        pwshExe.StandardInput.WriteLine(MessageBox.Show(String(OverwritePromptText), MessageBox.WARNING));
+        // Optional
+        OverwritePromptText.Clear();
+      } else {
+        OverwritePromptText.AppendLine(outData);
+      }
+    }
+  }
+
+  /**
+   * Show the error message that the child process writes on the console host.
+   * It handles the event when the child process redirects errors to the parent Standard
+   * Error stream. Raised exceptions are terminating errors. Thus, this handler only notifies
+   * the user of an error and displays the error message. For this reason, this subroutine
+   * does not define the sender objPwshExe object parameter in its signature.
+   * @private
+   * @param {string} errData the error message text.
+   */
+  static function HandleErrorDataReceived(errData) {
+    if (errData) {
+      // Remove the ANSI escaped characters from the error message data text.
+      MessageBox.Show(errData.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').replace(/^[^:]*:\s+/, ''));
+    }
+  }
+
+  /**
+   * Start a PowerShell Core process that runs the shortcut menu target
+   * script with the markdown path as the argument.
+   * The Try-Catch handles the errors thrown by the process. The Standard Error
+   * Stream encoding is not utf-8. For this reason, it surrounds the message with
+   * unwanted characters. The error message delimiter constant string separates
+   * the informative message from noisy characters.
+   */
+  public function Start() {
+    OverwritePromptText.Clear();
+    var pwshExe = new Process();
+    var pwshStartInfo = new ProcessStartInfo(
+      // The HKLM registry subkey stores the PowerShell Core application path.
+      Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null),
+      String.Format(
+        '-nop -ep Bypass -w Hidden -cwa "$ErrorView = ""ConciseView""; Import-Module $args[0]; {2} -MarkdownPath $args[1]" "{0}" "{1}"',
+        ChangeScriptExtension('.psm1'), MarkdownPath, Path.GetFileNameWithoutExtension(param.ApplicationPath)
+      )
+    );
+    // Redirect streams to the launcher process.
+    with (pwshStartInfo) {
+      RedirectStandardOutput = true;
+      RedirectStandardInput = true;
+      RedirectStandardError = true;
+      CreateNoWindow = true;
+      UseShellExecute = false;
+    }
+    pwshExe.StartInfo = pwshStartInfo;
+    // Register the event handlers.
+    pwshExe.EnableRaisingEvents = true;
+    pwshExe.add_OutputDataReceived(HandleOutputDataReceived);
+    // Start the child process.
+    with (pwshExe) {
+      Start();
+      BeginOutputReadLine();
+      WaitForExit();
+    }
+    // When the process terminated with an error.
+    HandleErrorDataReceived(pwshExe.StandardError.ReadToEnd());
+    with (pwshExe) {
+      Close();
+      Dispose();
+    }
+  }
+
+  /**
+   * @returns the MessageBox type.
+   */
+  static function GetMessageBoxType() {
+    /** @private @constant {string} */
+    var MESSAGE_BOX_TITLE = 'Convert to HTML';
+    /** 
+     * @private @constant
+     * Do not remove repetition. It is there to solve a bug.
+     */
+    var EXPECTED_DIALOGRESULT: System.Array = [DialogResult.Yes, DialogResult.No, DialogResult.No];
+  
+    /**
+     * Represents the markdown conversion message box.
+     * @typedef {object} MessageBox
+     * @property {number} WARNING specifies that the dialog shows a warning message.
+     */
+    var MessageBox = { };
+  
+    /** @public @static @readonly @property {number} */
+    MessageBox.WARNING = MessageBoxIcon.Exclamation;
+    // Object.defineProperty() method does not work in WSH.
+    // It is not possible in this implementation to make the
+    // property non-writable.
+  
+    /**
+     * Show a warning message or an error message box.
+     * The function does not return anything when the message box is an error.
+     * @public @static @method Show @memberof MessageBox
+     * @param {string} message is the message text.
+     * @param {number} [messageType = ERROR_MESSAGE] message box type (Warning/Error).
+     * @returns {string|void} "Yes" or "No" depending on the user's click when the message box is a warning.
+     */
+    MessageBox.Show = function(message, messageType: MessageBoxIcon) {
+      if (messageType != MessageBoxIcon.Error && messageType != MessageBoxIcon.Exclamation) {
+        messageType = MessageBoxIcon.Error;
+      }
+      // The error message box shows the OK button alone.
+      // The warning message box shows the alternative Yes or No buttons.
+      var messageButton: MessageBoxButtons = messageType == MessageBoxIcon.Error ? MessageBoxButtons.OK:MessageBoxButtons.YesNo;
+      try {
+        return EXPECTED_DIALOGRESULT.GetValue(
+          System.Array.BinarySearch(
+            EXPECTED_DIALOGRESULT,
+            System.Windows.Forms.MessageBox.Show(message, MESSAGE_BOX_TITLE, messageButton, messageType)
+          )
+        );
+      } catch (error) { }
+    }
+  
+    return MessageBox;
+  }
+}
 
 /**
  * Change the launcher assembly path extension.
