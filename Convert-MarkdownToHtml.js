@@ -127,14 +127,14 @@ class ConversionWatcher {
    * It handles the event when the child process redirects errors to the parent Standard
    * Error stream. Raised exceptions are terminating errors. Thus, this handler only notifies
    * the user of an error and displays the error message. For this reason, this subroutine
-   * does not define the sender objPwshExe object parameter in its signature.
-   * @private
-   * @param {string} errData the error message text.
+   * does not use the sender pwshExe process object parameter in its signature.
+   * @param errEvtArgs the received error message object.
    */
-  static function HandleErrorDataReceived(errData) {
-    if (errData) {
+  static function HandleErrorDataReceived(pwshExe: Object, errEvtArgs: DataReceivedEventArgs) {
+    var errData = errEvtArgs.Data;
+    if (!String.IsNullOrEmpty(errData)) {
       // Remove the ANSI escaped characters from the error message data text.
-      MessageBox.Show(errData.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').replace(/^[^:]*:\s+/, ''));
+      MessageBox.Show(errData.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').Remove(0, 'Write-Error: '.length));
     }
   }
 
@@ -153,7 +153,9 @@ class ConversionWatcher {
       // The HKLM registry subkey stores the PowerShell Core application path.
       Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null),
       String.Format(
-        '-nop -ep Bypass -w Hidden -cwa "$ErrorView = ""ConciseView""; Import-Module $args[0]; {2} -MarkdownPath $args[1]" "{0}" "{1}"',
+        '-nop -ep Bypass -w Hidden -cwa "try{{ Import-Module $args[0]; {2} -MarkdownPath $args[1] }}' +
+        // Get uniform error messages format by handling them in a catch statement.
+        'catch {{ $ErrorView = ""ConciseView""; Write-Error $_.Exception.Message }}" "{0}" "{1}"',
         ChangeScriptExtension('.psm1'), MarkdownPath, Path.GetFileNameWithoutExtension(param.ApplicationPath)
       )
     );
@@ -169,15 +171,13 @@ class ConversionWatcher {
     // Register the event handlers.
     pwshExe.EnableRaisingEvents = true;
     pwshExe.add_OutputDataReceived(HandleOutputDataReceived);
+    pwshExe.add_ErrorDataReceived(HandleErrorDataReceived);
     // Start the child process.
     with (pwshExe) {
       Start();
       BeginOutputReadLine();
+      BeginErrorReadLine();
       WaitForExit();
-    }
-    // When the process terminated with an error.
-    HandleErrorDataReceived(pwshExe.StandardError.ReadToEnd());
-    with (pwshExe) {
       Close();
       Dispose();
     }
