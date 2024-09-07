@@ -6,7 +6,8 @@ import System;
 import System.Runtime.InteropServices;
 import Microsoft.VisualBasic.FileIO;
 import Microsoft.VisualBasic;
-import mshtml;
+import System.Drawing;
+import System.Windows.Forms;
 import ROOT.CIMV2;
 
 /**
@@ -99,10 +100,14 @@ function GetHtmlPath() {
  */
 function ConvertFrom(markdownContent) {
   // Build the HTML document that will load the showdown.js library.
-  var document: HTMLDocumentClass = new HTMLDocumentClass();
+  with (new WebBrowser()) {
+    ScriptErrorsSuppressed = true;
+    Navigate('about:blank');
+    var document = Document.DomDocument;
+  }
   document.open();
   document.IHTMLDocument2_write(FileSystem.ReadAllText(ChangeScriptExtension('.html')));
-  document.body.innerHTML = markdownContent;
+  document.body.innerText = markdownContent;
   document.parentWindow.execScript('convertMarkdown()', 'javascript');
   try {
     return document.body.innerHTML;
