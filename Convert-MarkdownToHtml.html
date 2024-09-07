@@ -10,8 +10,8 @@
      * Convert the body markdown content to an html document.
      * @returns {string} the output html document content. 
      */
-    function convertMarkdown() {
-      document.body.innerHTML = (new showdown.Converter()).makeHtml(document.body.innerText);
+    function convertMarkdown(markdownContent) {
+      return (new showdown.Converter()).makeHtml(markdownContent);
     }
   </script>
 </head>

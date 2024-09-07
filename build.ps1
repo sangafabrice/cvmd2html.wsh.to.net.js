@@ -46,8 +46,7 @@ Function Build-MarkdownToHtmlShortcut {
   # & "$PSScriptRoot\mgmtclassgen.exe" StdRegProv /l cs /n root\cimv2 /p StdRegProv.cs
   # Compile the generated StdRegProv management class with mgmtclassgen.exe.
   # The class was modified so it can be used in JScript.NET with less effort.
-  csc.exe /nologo /target:library /out:$(($StdRegProvDll = "$PSScriptRoot\StdRegProv.dll")) "$PSScriptRoot\StdRegProv.cs"
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /reference:$StdRegProvDll /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs
