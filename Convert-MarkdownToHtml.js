@@ -106,7 +106,7 @@ function ConvertFrom(markdownContent) {
     var document = Document.DomDocument;
   }
   document.open();
-  document.IHTMLDocument2_write(FileSystem.ReadAllText(ChangeScriptExtension('.html')));
+  document.IHTMLDocument2_write(Format(FileSystem.ReadAllText(ChangeScriptExtension('.html')), FileSystem.GetParentPath(param.ApplicationPath)));
   document.body.innerText = markdownContent;
   document.parentWindow.execScript('convertMarkdown()', 'javascript');
   try {
