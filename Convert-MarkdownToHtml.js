@@ -5,10 +5,10 @@
 import System;
 import System.IO;
 import System.Text;
-import System.Drawing;
 import System.Windows.Forms;
 import System.Diagnostics;
 import Microsoft.Win32;
+import Jint;
 
 /**
  * The parameters and arguments.
@@ -97,14 +97,18 @@ function GetHtmlPath() {
  * @returns {string} the output html document content. 
  */
 function ConvertFrom(markdownContent) {
-  // Build the HTML document that will load the showdown.js library.
-  with (new WebBrowser()) {
-    ScriptErrorsSuppressed = true;
-    Navigate('about:blank');
-    var document = Document;
-  }
-  document.Write(File.ReadAllText(ChangeScriptExtension('.html')).replace('{0}', Path.GetDirectoryName(param.ApplicationPath)));
-  return document.InvokeScript('convertMarkdown', Object[]([markdownContent]));
+  var jsEngine = new Engine(OptionsExtensions.EnableModules(new Options(), Path.GetDirectoryName(param.ApplicationPath), true));
+  var moduleSpecifier = 'cvmd2html';
+  var convertToHtml = 'convertToHtml';
+  jsEngine.Modules.Add(
+    moduleSpecifier,
+    String.Format(
+      'import snarkdown from "./snarkdown.js";' +
+      'export const {0} = snarkdown;',
+      convertToHtml
+    )
+  );
+  return jsEngine.Modules.Import(moduleSpecifier).Get(convertToHtml).ToObject().Invoke('', [markdownContent]);
 }
 
 /**
