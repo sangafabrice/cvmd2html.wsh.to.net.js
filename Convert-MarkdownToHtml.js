@@ -8,7 +8,7 @@ import System.Text;
 import System.Windows.Forms;
 import System.Diagnostics;
 import Microsoft.Win32;
-import Jint;
+import Markdig;
 
 /**
  * The parameters and arguments.
@@ -30,28 +30,22 @@ if (param.Markdown) {
 
 /** @class */
 var MessageBox = GetMessageBoxType();
-CheckMarkdown();
-ConvertTo(GetHtmlPath());
+SetHtmlContent(GetHtmlPath(), Markdown.ToHtml(File.ReadAllText(CheckMarkdown(param.Markdown))));
 Quit(0);
 
 /**
  * Validate the input markdown path string.
+ * @param {string} markdown the input markdown file path.
+ * @returns {string} the markdown file path if it is valid.
 */
-function CheckMarkdown() {
-  if (String.Compare(String(Path.GetExtension(param.Markdown)), '.md', true)) {
-    MessageBox.Show(String.Format('"{0}" is not a markdown (.md) file.', param.Markdown));
+function CheckMarkdown(markdown) {
+  if (String.Compare(String(Path.GetExtension(markdown)), '.md', true)) {
+    MessageBox.Show(String.Format('"{0}" is not a markdown (.md) file.', markdown));
   }
-  if (!File.Exists(param.Markdown)) {
-    MessageBox.Show(String.Format('"{0}" cannot be found.', param.Markdown));
+  if (!File.Exists(markdown)) {
+    MessageBox.Show(String.Format('"{0}" cannot be found.', markdown));
   }
-}
-
-/**
- * Convert the content of the markdown file to html.
- * @param {string} htmlPath is the output html path.
- */
-function ConvertTo(htmlPath) {
-  SetHtmlContent(htmlPath, ConvertFrom(File.ReadAllText(param.Markdown)));
+  return markdown;
 }
 
 /**
@@ -89,26 +83,6 @@ function GetHtmlPath() {
     MessageBox.Show(String.Format('"{0}" cannot be overwritten because it is a directory.', htmlPath));
   }
   return htmlPath;
-}
-
-/**
- * Convert a markdown content to an html document.
- * @param {string} mardownContent is the content to convert.
- * @returns {string} the output html document content. 
- */
-function ConvertFrom(markdownContent) {
-  var jsEngine = new Engine(OptionsExtensions.EnableModules(new Options(), Path.GetDirectoryName(param.ApplicationPath), true));
-  var moduleSpecifier = 'cvmd2html';
-  var convertToHtml = 'convertToHtml';
-  jsEngine.Modules.Add(
-    moduleSpecifier,
-    String.Format(
-      'import snarkdown from "./snarkdown.js";' +
-      'export const {0} = snarkdown;',
-      convertToHtml
-    )
-  );
-  return jsEngine.Modules.Import(moduleSpecifier).Get(convertToHtml).ToObject().Invoke('', [markdownContent]);
 }
 
 /**

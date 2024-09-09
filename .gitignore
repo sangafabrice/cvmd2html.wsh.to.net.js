@@ -7,8 +7,7 @@ rc.exe
 TlbImp.exe
 COMMIT.LOG
 nuget.exe
-Acornima.dll
-Jint.dll
+Markdig.dll
 System.Buffers.dll
 System.Memory.dll
 System.Numerics.Vectors.dll
