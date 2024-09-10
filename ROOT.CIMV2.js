@@ -6,106 +6,6 @@ import System;
 import System.Management;
 import System.Diagnostics;
 
-package ROOT.CIMV2 {
-
-  class StdRegProv {
-
-    private static var CreatedClassName: String = 'StdRegProv';
-
-    public static function CreateKey(hDefKey: uint, sSubKeyName: String): uint {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      return Convert.ToUInt32(classObj.InvokeMethod(methodName, inParams, null).Properties['ReturnValue'].Value);
-    }
-
-    public static function DeleteKey(hDefKey: uint, sSubKeyName: String): uint {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      return Convert.ToUInt32(classObj.InvokeMethod(methodName, inParams, null).Properties['ReturnValue'].Value);
-    }
-
-    public static function DeleteValue(hDefKey: uint, sSubKeyName: String, sValueName: String): uint {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      inParams['sValueName'] = sValueName;
-      return Convert.ToUInt32(classObj.InvokeMethod(methodName, inParams, null).Properties['ReturnValue'].Value);
-    }
-
-    public static function EnumKey(hDefKey: uint, sSubKeyName: String): String[] {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      return classObj.InvokeMethod(methodName, inParams, null).Properties['sNames'].Value;
-    }
-
-    public static function GetStringValue(hDefKey: uint, sSubKeyName: String, sValueName: String): String {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      inParams['sValueName'] = sValueName;
-      return classObj.InvokeMethod(methodName, inParams, null).Properties['sValue'].Value;
-    }
-
-    public static function SetStringValue(hDefKey: uint, sSubKeyName: String, sValueName: String, sValue: String): String {
-      var stackTrace: StackTrace = new StackTrace();
-      var methodName: String = Util.GetMethodName(stackTrace);
-      var classObj: ManagementClass = new ManagementClass(CreatedClassName);
-      var inParams: ManagementBaseObject = classObj.GetMethodParameters(methodName);
-      inParams['hDefKey'] = hDefKey;
-      inParams['sSubKeyName'] = sSubKeyName;
-      inParams['sValueName'] = sValueName;
-      inParams['sValue'] = sValue;
-      return Convert.ToUInt32(classObj.InvokeMethod(methodName, inParams, null).Properties['ReturnValue'].Value);
-    }
-
-    /**
-     * Remove the key and all descendant subkeys.
-     * @borrows DeleteKey as DeleteAllKey
-     */
-    public static function DeleteAllKey(hDefKey: uint, sSubKeyName: String): uint {
-      var returnValue: uint = 0;
-      var sNames = EnumKey(hDefKey, sSubKeyName);
-      if (sNames != null) {
-        for (var index = 0; index < sNames.length; index++) {
-          returnValue += DeleteAllKey(hDefKey, sSubKeyName + '\\' + sNames[index]);
-        }
-      }
-      return (returnValue += DeleteKey(hDefKey, sSubKeyName));
-    }
-  }
-
-  internal class Util {
-
-    /**
-     * Get the name of the method calling this method.
-     * NOTE: the method should initialize the stackTrace variable in its scope
-     * before calling GetMethodName. So avoid GetMethodName(new stackTrace()).
-     * @param stackTrace is the stack trace from the calling method.
-     */
-    public static function GetMethodName(stackTrace: StackTrace): String {
-      return stackTrace.GetFrame(0).GetMethod().Name;
-    }
-  }
-}
-
 package ROOT.CIMV2.WIN32 {
 
   class Process {
@@ -126,13 +26,18 @@ package ROOT.CIMV2.WIN32 {
 
     /**
      * Wait for the specified process exit.
-     * @param ProcessId is the process identifier.
+     * @param ParentProcessId is the parent process identifier.
      */
-    public static function WaitForExit(ProcessId: uint) {
-      try {
-        var path = 'Win32_Process=' + ProcessId;
-        while ((new ManagementObject(path)).Properties['Name'].Value == 'cmd.exe') { }
-      } catch (error) { }
+    public static function WaitForExit(ParentProcessId: uint) {
+      // Select the process whose parent is the intermediate process used for executing the link.
+      var wmiQuery = 'SELECT * FROM Win32_Process WHERE Name="pwsh.exe" AND ParentProcessId=' + ParentProcessId;
+      var getProcessCount = function() {
+        return (new ManagementObjectSearcher(wmiQuery)).Get().Count;
+      }
+      // Wait for the process to start.
+      while (getProcessCount() == 0) { }
+      // Wait for the process to exit.
+      while (getProcessCount()) { }
     }
   }
 

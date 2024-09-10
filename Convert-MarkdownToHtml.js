@@ -12,7 +12,7 @@ import System.Windows.Forms;
 import System.Runtime.InteropServices;
 import IWshRuntimeLibrary;
 import ROOT.CIMV2.WIN32;
-import ROOT.CIMV2;
+import Microsoft.Win32;
 
 /**
  * The parameters and arguments.
@@ -38,25 +38,34 @@ if (param.Help) {
 }
 
 if (param.Set || param.Unset) {
-  var HKCU: uint = 0x80000001;
-  var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
+  var HKCU = Registry.CurrentUser;
+  var SHELL_SUBKEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell';
+  var VERB = 'cthtml';
   if (param.Set) {
-    var shortcutIconPath = ChangeScriptExtension('.ico');
+    var VERB_SUBKEY = String.Format('{0}\\{1}', SHELL_SUBKEY, VERB);
+    var VERB_KEY = String.Format('{0}\\{1}', HKCU, VERB_SUBKEY);
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
     var command = String.Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
-    StdRegProv.CreateKey(HKCU, COMMAND_KEY);
-    StdRegProv.SetStringValue(HKCU, COMMAND_KEY, null, command);
-    StdRegProv.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
+    Registry.SetValue(COMMAND_KEY, '', command);
+    Registry.SetValue(VERB_KEY, '', 'Convert to &HTML');
     var iconValueName = 'Icon';
     if (param.NoIcon) {
-      StdRegProv.DeleteValue(HKCU, VERB_KEY, iconValueName);
+      var VERB_KEY_OBJ = HKCU.CreateSubKey(VERB_SUBKEY);
+      if (VERB_KEY_OBJ) {
+        VERB_KEY_OBJ.DeleteValue(iconValueName);
+        VERB_KEY_OBJ.Close();
+      }
     } else {
-      StdRegProv.SetStringValue(HKCU, VERB_KEY, iconValueName, shortcutIconPath);
+      Registry.SetValue(VERB_KEY, iconValueName, param.ApplicationPath);
     }
   } else if (param.Unset) {
     // Remove the shortcut menu.
-    StdRegProv.DeleteAllKey(HKCU, VERB_KEY);
+    var SHELL_KEY_OBJ = HKCU.CreateSubKey(SHELL_SUBKEY);
+    if (SHELL_KEY_OBJ) {
+      SHELL_KEY_OBJ.DeleteSubKeyTree(VERB);
+      SHELL_KEY_OBJ.Close();
+    }
   }
   Quit(0);
 }
@@ -85,7 +94,7 @@ function GetDynamicLinkPathWith(markdown) {
   );
   link.TargetPath = GetPwshPath();
   link.Arguments = String.Format('-f "{0}" -Markdown "{1}"', ChangeScriptExtension('.ps1'), markdown);
-  link.IconLocation = ChangeScriptExtension('.ico');
+  link.IconLocation = ChangeScriptExtension('.exe');
   link.Save();
   try {
     return link.FullName;
@@ -111,9 +120,8 @@ function ChangeScriptExtension(extension) {
  * @returns {string} the pwsh.exe full path or an empty string.
  */
 function GetPwshPath() {
-  var HKLM: uint = 0x80000002;
   // The HKLM registry subkey stores the PowerShell Core application path.
-  return StdRegProv.GetStringValue(HKLM, 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', null);
+  return Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null);
 }
 
 /**
