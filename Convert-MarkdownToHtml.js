@@ -4,8 +4,6 @@
  */
 import System;
 import System.Runtime.InteropServices;
-import System.Resources;
-import System.Reflection;
 import Microsoft.VisualBasic.FileIO;
 import Microsoft.VisualBasic;
 import mshtml;
@@ -103,10 +101,7 @@ function ConvertFrom(markdownContent) {
   // Build the HTML document that will load the showdown.js library.
   var document: HTMLDocumentClass = new HTMLDocumentClass();
   document.open();
-  document.IHTMLDocument2_write(
-    new ResourceManager('Resource', Assembly.GetExecutingAssembly())
-    .GetString('LoaderHtml')
-  );
+  document.IHTMLDocument2_write(Resource.LoaderHtml);
   document.body.innerHTML = markdownContent;
   document.parentWindow.execScript('convertMarkdown()', 'javascript');
   try {
