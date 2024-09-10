@@ -41,8 +41,9 @@ Function Build-MarkdownToHtmlShortcut {
   # Import the dependency libraries.
   $MshtmlDllPath = C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -command '[System.Reflection.Assembly]::LoadWithPartialName("Microsoft.mshtml").Location'
   Copy-Item -LiteralPath $MshtmlDllPath -Destination ($MshtmlDllPath = "$PSScriptRoot\Microsoft.mshtml.dll") -Force
-  # Set the windows resources file with the resource compiler.
+  # Set the windows resources file with the resource compiler and the resource generator.
   & "$PSScriptRoot\rc.exe" /nologo /fo $(($TargetInfoResFile = Set-ConvertMd2HtmlExtension '.res')) $(Set-ConvertMd2HtmlExtension '.rc')
+  [void] (& "$PSScriptRoot\ResGen.exe" "$PSScriptRoot\Resource.resx"  $(($TargetEmbeddedResFile = "$PSScriptRoot\Resource.resources")))
   # Compile the launcher script into an .exe file of the same base name.
   $EnvPath = $Env:Path
   $Env:Path = "$Env:windir\Microsoft.NET\Framework$(If ([Environment]::Is64BitOperatingSystem) { '64' })\v4.0.30319\;$Env:Path"
@@ -50,7 +51,7 @@ Function Build-MarkdownToHtmlShortcut {
   # Compile the generated StdRegProv management class with mgmtclassgen.exe.
   # The class was modified so it can be used in JScript.NET with less effort.
   csc.exe /nologo /target:library /out:$(($StdRegProvDll = "$PSScriptRoot\StdRegProv.dll")) "$PSScriptRoot\StdRegProv.cs"
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /reference:$MshtmlDllPath /reference:$StdRegProvDll /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /resource:$TargetEmbeddedResFile /reference:$MshtmlDllPath /reference:$StdRegProvDll /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs

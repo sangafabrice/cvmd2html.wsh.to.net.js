@@ -1,8 +1,10 @@
 *.lnk
 *.exe
 *.res
+*.resources
 *.dll
 rh.*
 rc.exe
 TlbImp.exe
 COMMIT.LOG
+ResGen.exe
