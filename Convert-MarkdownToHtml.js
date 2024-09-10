@@ -3,11 +3,12 @@
  * @version 1.0.0.2
  */
 import System;
-import System.Runtime.InteropServices;
-import Microsoft.VisualBasic.FileIO;
-import Microsoft.VisualBasic;
-import mshtml;
-import ROOT.CIMV2;
+import System.IO;
+import System.Text;
+import System.Windows.Forms;
+import System.Diagnostics;
+import Microsoft.Win32;
+import Markdig;
 
 /**
  * The parameters and arguments.
@@ -29,30 +30,22 @@ if (param.Markdown) {
 
 /** @class */
 var MessageBox = GetMessageBoxType();
-/** @constant {regexp} */
-var MARKDOWN_REGEX = /\.md$/i;
-CheckMarkdown();
-ConvertTo(GetHtmlPath());
+SetHtmlContent(GetHtmlPath(), Markdown.ToHtml(File.ReadAllText(CheckMarkdown(param.Markdown))));
 Quit(0);
 
 /**
  * Validate the input markdown path string.
- */
-function CheckMarkdown() {
-  if (!MARKDOWN_REGEX.test(param.Markdown)) {
-    MessageBox.Show(Format('"{0}" is not a markdown (.md) file.', param.Markdown));
+ * @param {string} markdown the input markdown file path.
+ * @returns {string} the markdown file path if it is valid.
+*/
+function CheckMarkdown(markdown) {
+  if (String.Compare(String(Path.GetExtension(markdown)), '.md', true)) {
+    MessageBox.Show(String.Format('"{0}" is not a markdown (.md) file.', markdown));
   }
-  if (!FileSystem.FileExists(param.Markdown)) {
-    MessageBox.Show(Format('"{0}" cannot be found.', param.Markdown));
+  if (!File.Exists(markdown)) {
+    MessageBox.Show(String.Format('"{0}" cannot be found.', markdown));
   }
-}
-
-/**
- * Convert the content of the markdown file to html.
- * @param {string} htmlPath is the output html path.
- */
-function ConvertTo(htmlPath) {
-  SetHtmlContent(htmlPath, ConvertFrom(FileSystem.ReadAllText(param.Markdown)));
+  return markdown;
 }
 
 /**
@@ -63,12 +56,12 @@ function ConvertTo(htmlPath) {
  */
 function SetHtmlContent(htmlPath, htmlContent) {
   try {
-    FileSystem.WriteAllText(htmlPath, htmlContent, false);
+    File.WriteAllText(htmlPath, htmlContent);
   } catch (error) {
     if (error.number == -2146823266) {
-      MessageBox.Show(Format('Access to the path "{0}" is denied.', htmlPath));
+      MessageBox.Show(String.Format('Access to the path "{0}" is denied.', htmlPath));
     } else {
-      MessageBox.Show(Format('Unspecified error trying to write to "{0}".', htmlPath));
+      MessageBox.Show(String.Format('Unspecified error trying to write to "{0}".', htmlPath));
     }
   }
 }
@@ -80,47 +73,29 @@ function SetHtmlContent(htmlPath, htmlContent) {
  * @returns {string} the output html path.
  */
 function GetHtmlPath() {
-  var htmlPath = param.Markdown.replace(MARKDOWN_REGEX, '.html');
-  if (FileSystem.FileExists(htmlPath)) {
+  var htmlPath = Path.ChangeExtension(param.Markdown, '.html');
+  if (File.Exists(htmlPath)) {
     MessageBox.Show(
-      Format('The file "{0}" already exists.\n\nDo you want to overwrite it?', htmlPath),
+      String.Format('The file "{0}" already exists.\n\nDo you want to overwrite it?', htmlPath),
       MessageBox.WARNING
     );
-  } else if (FileSystem.DirectoryExists(htmlPath)) {
-    MessageBox.Show(Format('"{0}" cannot be overwritten because it is a directory.', htmlPath));
+  } else if (Directory.Exists(htmlPath)) {
+    MessageBox.Show(String.Format('"{0}" cannot be overwritten because it is a directory.', htmlPath));
   }
   return htmlPath;
-}
-
-/**
- * Convert a markdown content to an html document.
- * @param {string} mardownContent is the content to convert.
- * @returns {string} the output html document content. 
- */
-function ConvertFrom(markdownContent) {
-  // Build the HTML document that will load the showdown.js library.
-  var document: HTMLDocumentClass = new HTMLDocumentClass();
-  document.open();
-  document.IHTMLDocument2_write(Resource.LoaderHtml);
-  document.body.innerHTML = markdownContent;
-  document.parentWindow.execScript('convertMarkdown()', 'javascript');
-  try {
-    return document.body.innerHTML;
-  } finally {
-    if (document != undefined) {
-      document.close();
-      Marshal.FinalReleaseComObject(document);
-      document = null;
-    }
-  }
 }
 
 /**
  * @returns the MessageBox type.
  */
 function GetMessageBoxType() {
-  /** @private @constant {number} */
+  /** @private @constant {string} */
   var MESSAGE_BOX_TITLE = 'Convert to HTML';
+  /** 
+   * @private @constant
+   * Do not remove repetition. It is there to solve a bug.
+   */
+  var EXPECTED_DIALOGRESULT: System.Array = [DialogResult.OK, DialogResult.No, DialogResult.No];
 
   /**
    * Represents the markdown conversion message box.
@@ -130,7 +105,7 @@ function GetMessageBoxType() {
   var MessageBox = { };
 
   /** @public @static @readonly @property {number} */
-  MessageBox.WARNING = MsgBoxStyle.Exclamation;
+  MessageBox.WARNING = MessageBoxIcon.Exclamation;
   // Object.defineProperty() method does not work in WSH.
   // It is not possible in this implementation to make the
   // property non-writable.
@@ -143,20 +118,18 @@ function GetMessageBoxType() {
    * @param {number} [messageType = ERROR_MESSAGE] message box type (Warning/Error).
    * @returns {string|void} "Yes" or "No" depending on the user's click when the message box is a warning.
    */
-  MessageBox.Show = function(message, messageType) {
-    if (messageType != MsgBoxStyle.Critical && messageType != MsgBoxStyle.Exclamation) {
-      messageType = MsgBoxStyle.Critical;
+  MessageBox.Show = function(message, messageType: MessageBoxIcon) {
+    if (messageType != MessageBoxIcon.Error && messageType != MessageBoxIcon.Exclamation) {
+      messageType = MessageBoxIcon.Error;
     }
     // The error message box shows the OK button alone.
     // The warning message box shows the alternative Yes or No buttons.
-    messageType += messageType == MsgBoxStyle.Critical ? MsgBoxStyle.OkOnly:MsgBoxStyle.YesNo;
+    var messageButton: MessageBoxButtons = messageType == MessageBoxIcon.Error ? MessageBoxButtons.OK:MessageBoxButtons.YesNo;
     if (
-      Strings.Filter(
-        String[]([' OK ', ' No ']),
-        Format(' {0} ', Interaction.MsgBox(String(message), messageType, MESSAGE_BOX_TITLE)),
-        true,
-        CompareMethod.Text
-      ).length > 0
+      System.Array.BinarySearch(
+        EXPECTED_DIALOGRESULT,
+        System.Windows.Forms.MessageBox.Show(message, MESSAGE_BOX_TITLE, messageButton, messageType)
+      ) >= 0
     ) {
       Quit(1);
     }
@@ -173,40 +146,34 @@ if (param.Help) {
 
 /* Configuration and settings */
 if (param.Set || param.Unset) {
-  var HKCU: uint = 0x80000001;
-  var VERB_KEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell\\cthtml';
+  var HKCU = Registry.CurrentUser;
+  var SHELL_SUBKEY = 'SOFTWARE\\Classes\\SystemFileAssociations\\.md\\shell';
+  var VERB = 'cthtml';
   if (param.Set) {
+    var VERB_SUBKEY = String.Format('{0}\\{1}', SHELL_SUBKEY, VERB);
+    var VERB_KEY = String.Format('{0}\\{1}', HKCU, VERB_SUBKEY);
     // Configure the shortcut menu in the registry.
     var COMMAND_KEY = VERB_KEY + '\\command';
-    var command = Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
-    StdRegProv.CreateKey(HKCU, COMMAND_KEY);
-    StdRegProv.SetStringValue(HKCU, COMMAND_KEY, null, command);
-    StdRegProv.SetStringValue(HKCU, VERB_KEY, null, 'Convert to &HTML');
+    var command = String.Format('"{0}" /Markdown:"%1"', param.ApplicationPath);
+    Registry.SetValue(COMMAND_KEY, '', command);
+    Registry.SetValue(VERB_KEY, '', 'Convert to &HTML');
     var iconValueName = 'Icon';
     if (param.NoIcon) {
-      StdRegProv.DeleteValue(HKCU, VERB_KEY, iconValueName);
+      var VERB_KEY_OBJ = HKCU.CreateSubKey(VERB_SUBKEY);
+      if (VERB_KEY_OBJ) {
+        VERB_KEY_OBJ.DeleteValue(iconValueName);
+        VERB_KEY_OBJ.Close();
+      }
     } else {
-      StdRegProv.SetStringValue(HKCU, VERB_KEY, iconValueName, param.ApplicationPath);
+      Registry.SetValue(VERB_KEY, iconValueName, param.ApplicationPath);
     }
   } else if (param.Unset) {
     // Remove the shortcut menu.
-    // Remove the verb key and subkeys.
-    // Recursion is used because a key with subkeys cannot be deleted.
-    // Recursion helps removing the leaf keys first.
-    var deleteVerbKey = function(key) {
-      var recursive = function func(key) {
-        var sNames = StdRegProv.EnumKey(HKCU, key);
-        if (sNames != null) {
-          for (var index = 0; index < sNames.length; index++) {
-            func(key + '\\' + sNames[index]);
-          }
-        }
-        StdRegProv.DeleteKey(HKCU, key);
-      };
-      recursive(key);
+    var SHELL_KEY_OBJ = HKCU.CreateSubKey(SHELL_SUBKEY);
+    if (SHELL_KEY_OBJ) {
+      SHELL_KEY_OBJ.DeleteSubKeyTree(VERB);
+      SHELL_KEY_OBJ.Close();
     }
-    deleteVerbKey(VERB_KEY);
-    deleteVerbKey = null;
   }
   Quit(0);
 }
@@ -221,23 +188,7 @@ ShowHelp();
  * @returns {string} a file path with the new extension.
  */
 function ChangeScriptExtension(extension) {
-  return param.ApplicationPath.replace(/\.exe$/i, extension);
-}
-
-/**
- * Replace the format item "{n}" by the nth input in a list of arguments.
- * @param {string} format the pattern format.
- * @param {...string} args the replacement texts.
- * @returns {string} a copy of format with the format items replaced by args.
- */
-function Format(format, args) {
-  if (args.constructor !== Array) {
-    return Strings.Replace(format, '{0}', args);
-  }
-  while (args.length > 0) {
-    format = Strings.Replace(format, '{' + (args.length - 1) + '}', args.pop());
-  }
-  return format;
+  return Path.ChangeExtension(param.ApplicationPath, extension);
 }
 
 /**
@@ -250,12 +201,9 @@ function GetParameters(args) {
   if (args.length == 2) {
     var arg = args[1];
     var param = { ApplicationPath: applicationPath };
-    var paramName = arg.split(':', 1)[0].toLowerCase();
-    if (paramName == '/markdown') {
-      param.Markdown = arg.replace(new RegExp('^' + paramName + ':?', 'i'), '')
-      if (param.Markdown.length > 0) {
-        return param;
-      }
+    if (/^\/markdown:[^:]/i.test(arg)) {
+      param.Markdown = arg.Split(char[]([':']), 2)[1];
+      return param;
     }
     switch (arg.toLowerCase()) {
       case '/set':
@@ -287,20 +235,24 @@ function GetParameters(args) {
  * Show help and quit.
  */
 function ShowHelp() {
-  var helpText = '';
-  helpText += 'The MarkdownToHtml shortcut launcher.\n';
-  helpText += 'It starts the shortcut menu target script in a hidden window.\n\n';
-  helpText += 'Syntax:\n';
-  helpText += '  Convert-MarkdownToHtml /Markdown:<markdown file path>\n';
-  helpText += '  Convert-MarkdownToHtml [/Set[:NoIcon]]\n';
-  helpText += '  Convert-MarkdownToHtml /Unset\n';
-  helpText += '  Convert-MarkdownToHtml /Help\n\n';
-  helpText += "<markdown file path>  The selected markdown's file path.\n";
-  helpText += '                 Set  Configure the shortcut menu in the registry.\n';
-  helpText += '              NoIcon  Specifies that the icon is not configured.\n';
-  helpText += '               Unset  Removes the shortcut menu.\n';
-  helpText += '                Help  Show the help doc.\n';
-  Interaction.MsgBox(String(helpText));
+  var helpTextBuilder = new StringBuilder();
+  with (helpTextBuilder) {
+    AppendLine('The MarkdownToHtml shortcut launcher.');
+    AppendLine('It starts the shortcut menu target script in a hidden window.');
+    AppendLine();
+    AppendLine('Syntax:');
+    AppendLine('  Convert-MarkdownToHtml /Markdown:<markdown file path>');
+    AppendLine('  Convert-MarkdownToHtml [/Set[:NoIcon]]');
+    AppendLine('  Convert-MarkdownToHtml /Unset');
+    AppendLine('  Convert-MarkdownToHtml /Help');
+    AppendLine();
+    AppendLine("<markdown file path>  The selected markdown's file path.");
+    AppendLine('                 Set  Configure the shortcut menu in the registry.');
+    AppendLine('              NoIcon  Specifies that the icon is not configured.');
+    AppendLine('               Unset  Removes the shortcut menu.');
+    AppendLine('                Help  Show the help doc.');
+  }
+  MessageBox.Show(helpTextBuilder);
   Quit(1);
 }
 

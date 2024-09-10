@@ -9,3 +9,9 @@ TlbImp.exe
 COMMIT.LOG
 ResGen.exe
 Resource.js
+nuget.exe
+Markdig.dll
+System.Buffers.dll
+System.Memory.dll
+System.Numerics.Vectors.dll
+System.Runtime.CompilerServices.Unsafe.dll
