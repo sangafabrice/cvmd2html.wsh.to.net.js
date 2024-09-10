@@ -11,7 +11,7 @@ import System.Text;
 import System.Windows.Forms;
 import System.Runtime.InteropServices;
 import IWshRuntimeLibrary;
-import ROOT.CIMV2.WIN32;
+import System.Diagnostics;
 import Microsoft.Win32;
 
 /**
@@ -79,7 +79,9 @@ ShowHelp();
  */
 function StartWith(markdown) {
   var linkPath = GetDynamicLinkPathWith(markdown);
-  Process.WaitForExit(Process.Create(String.Format('C:\\Windows\\System32\\cmd.exe /d /c "{0}"', linkPath)));
+  var startInfo = new ProcessStartInfo(linkPath);
+  startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+  Process.Start(startInfo).WaitForExit();
   File.Delete(linkPath);
 }
 

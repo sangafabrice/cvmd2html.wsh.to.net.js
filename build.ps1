@@ -42,16 +42,14 @@ Function Build-MarkdownToHtmlShortcut {
   $WshDllPath = "$PSScriptRoot\Interop.IWshRuntimeLibrary.dll";
   & "$PSScriptRoot\TlbImp.exe" /nologo /silent 'C:\Windows\System32\wshom.ocx' /out:$WshDllPath /namespace:IWshRuntimeLibrary
   # Set the windows resources file with the resource compiler.
-  & "$PSScriptRoot\rc.exe" /nologo /fo $(($TargetInfoResFile = Set-ConvertMd2HtmlExtension '.res')) /d EXE_FILE $(Set-ConvertMd2HtmlExtension '.rc')
-  & "$PSScriptRoot\rc.exe" /nologo /fo $(($RootCimv2ResFile = "$PSScriptRoot\ROOT.CIMV2.res")) /d DLL_FILE $(Set-ConvertMd2HtmlExtension '.rc')
+  & "$PSScriptRoot\rc.exe" /nologo /fo $(($TargetInfoResFile = Set-ConvertMd2HtmlExtension '.res')) $(Set-ConvertMd2HtmlExtension '.rc')
   # Compile the launcher script into an .exe file of the same base name.
   $EnvPath = $Env:Path
   $Env:Path = "$Env:windir\Microsoft.NET\Framework$(If ([Environment]::Is64BitOperatingSystem) { '64' })\v4.0.30319\;$Env:Path"
   # & "$PSScriptRoot\mgmtclassgen.exe" StdRegProv /l cs /n root\cimv2 /p StdRegProv.cs
   # Compile the generated StdRegProv management class with mgmtclassgen.exe.
   # The class was modified so it can be used in JScript.NET with less effort.
-  jsc.exe /nologo /target:library /out:$(($RootCim2Dll = "$PSScriptRoot\ROOT.CIMV2.dll")) /win32res:$RootCimv2ResFile "$PSScriptRoot\ROOT.CIMV2.js"
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /reference:$WshDllPath /reference:$RootCim2Dll /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /reference:$WshDllPath /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs

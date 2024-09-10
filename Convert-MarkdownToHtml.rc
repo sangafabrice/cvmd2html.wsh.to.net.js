@@ -1,9 +1,7 @@
 #include "Convert-MarkdownToHtml.h"
 
 
-#ifdef EXE_FILE
 103 ICON "Convert-MarkdownToHtml.ico"
-#endif
 
 
 1 VERSIONINFO
@@ -21,12 +19,7 @@ BLOCK "StringFileInfo"
     VALUE "LegalCopyright", "\xA9 2024 sangafabrice"
     VALUE "CompanyName", "sangafabrice"
     VALUE "FileVersion", VER_VERSION_STR
-#ifdef EXE_FILE
     VALUE "FileDescription", "CvMd2Html Launcher"
-#endif
-#ifdef DLL_FILE
-    VALUE "FileDescription", "WIM Utilities"
-#endif
   }
 }
 
