@@ -1,16 +1,13 @@
 /**
- * @file Launches the shortcut target PowerShell
- * script with the selected markdown as an argument.
- * It aims to eliminate the flashing console window
- * when the user clicks on the shortcut menu.
- * @version 0.0.1
+ * @file Watches the shortcut target PowerShell script runner
+ * and redirect the console output and errors to a message box.
+ * It aims to separate the window and console user interfaces.
+ * @version 0.1.0
  */
 import System;
 import System.IO;
 import System.Text;
 import System.Windows.Forms;
-import System.Runtime.InteropServices;
-import IWshRuntimeLibrary;
 import System.Diagnostics;
 import Microsoft.Win32;
 
@@ -29,8 +26,210 @@ import Microsoft.Win32;
 var param = GetParameters(Environment.GetCommandLineArgs());
 
 if (param.Markdown) {
-  StartWith(param.Markdown);
-  Quit(0);
+(function() {
+/* The watcher module */
+
+/** @class */
+var ConversionWatcher = GetConversionWatcherType();
+
+(new ConversionWatcher(param.Markdown)).Start();
+Quit(0);
+
+/**
+ * @returns the ConversionWatcher type.
+ */
+function GetConversionWatcherType() {
+  /** @class */
+  var MessageBox = GetMessageBoxType();
+
+  /**
+   * The specified Markdown path argument.
+   * @private @type {string}
+   */
+  var MarkdownPath;
+  /**
+   * The overwrite prompt text as read from the powershell core console host.
+   * @private @type {string}
+   */
+  var OverwritePromptText;
+
+  /**
+   * @class @constructs ConversionWatcher
+   * @param {string} markdown is the specified Markdown path argument.
+   */
+  function ConversionWatcher(markdown) {
+    MarkdownPath = markdown;
+    OverwritePromptText = new StringBuilder();
+  }
+
+  /**
+   * Execute the runner of the shortcut target script and wait for its exit.
+   * @public @memberof ConversionWatcher @instance
+   */
+  ConversionWatcher.prototype.Start = function() {
+    WaitForExit(StartPwshExeWithMarkdown());
+    // This method will run only once.
+    delete ConversionWatcher.prototype.Start;
+  }
+
+  /**
+   * Start a PowerShell Core process that runs the shortcut menu target
+   * script with the markdown path as the argument.
+   * The Try-Catch handles the errors thrown by the process. The Standard Error
+   * Stream encoding is not utf-8. For this reason, it surrounds the message with
+   * unwanted characters. The error message delimiter constant string separates
+   * the informative message from noisy characters.
+   * @private
+   * @returns {object} the process started by the built command.
+   */
+  function StartPwshExeWithMarkdown(): Process {
+    var pwshStartInfo = new ProcessStartInfo(
+      // The HKLM registry subkey stores the PowerShell Core application path.
+      Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null),
+      String.Format(
+        '-nop -ep Bypass -w Hidden -cwa "try{{ Import-Module $args[0]; {2} -MarkdownPath $args[1] }}' +
+        // Get uniform error messages format by handling them in a catch statement.
+        'catch {{ Write-Error $_.Exception.Message }}" "{0}" "{1}"',
+        ChangeScriptExtension('.psm1'), MarkdownPath, Path.GetFileNameWithoutExtension(param.ApplicationPath)
+      )
+    );
+    // Redirect streams to the launcher process.
+    with (pwshStartInfo) {
+      RedirectStandardOutput = true;
+      RedirectStandardInput = true;
+      RedirectStandardError = true;
+      CreateNoWindow = true;
+      UseShellExecute = false;
+    }
+    return Process.Start(pwshStartInfo);
+  }
+
+  /**
+   * Observe when the child process exits with or without an error.
+   * Call the appropriate handler for each outcome.
+   * @private
+   * @param {Process} pwshExe is the PowerShell Core process or child process.
+   * @param {boolean} pwshExe.HasExited specifies whether has completed.
+   * @param {number} pwshExe.ExitCode specifies that the process terminated with an error (!=0) or not (=0).
+   * @param {StreamReader} pwshExe.StandardOutput the standard output stream.
+   * @param {StreamReader} pwshExe.StandardError the standard error stream.
+   */
+  function WaitForExit(pwshExe) {
+    // Wait for the process to complete.
+    while (!pwshExe.HasExited) {
+      HandleOutputDataReceived(pwshExe, pwshExe.StandardOutput.ReadLine());
+    }
+    // When the process terminated with an error.
+    if (pwshExe.ExitCode) {
+      HandleErrorDataReceived(pwshExe.StandardError.ReadToEnd());
+    }
+    pwshExe.Close();
+    pwshExe.Dispose();
+  }
+
+  /**
+   * Show the overwrite prompt that the child process sends.
+   * Subsequently, wait for the user's response.
+   * Handle the event when the PowerShell Core (child) process
+   * redirects output to the parent Standard Output stream.
+   * @private
+   * @param {Process} pwshExe it the sender child process.
+   * @param {StreamWriter} pwshExe.StandardInput the standard input stream.
+   * @param {string} outData the output text line sent.
+   */
+  function HandleOutputDataReceived(pwshExe, outData) {
+    if (outData) {
+      // Show the message box when the text line is a question.
+      // Otherwise, append the text line to the overall message text variable.
+      if (outData.match(/\?\s*$/)) {
+        OverwritePromptText.AppendLine();
+        OverwritePromptText.AppendLine(outData);
+        // Write the user's choice to the child process console host.
+        pwshExe.StandardInput.WriteLine(MessageBox.Show(OverwritePromptText, MessageBox.WARNING));
+        // Optional
+        OverwritePromptText.Clear();
+      } else {
+        OverwritePromptText.AppendLine(outData);
+      }
+    }
+  }
+
+  /**
+   * Show the error message that the child process writes on the console host.
+   * It handles the event when the child process redirects errors to the parent Standard
+   * Error stream. Raised exceptions are terminating errors. Thus, this handler only notifies
+   * the user of an error and displays the error message. For this reason, this subroutine
+   * does not define the sender objPwshExe object parameter in its signature.
+   * @private
+   * @param {string} errData the error message text.
+   */
+  function HandleErrorDataReceived(errData) {
+    if (errData) {
+      // Remove the ANSI escaped characters from the error message data text.
+      MessageBox.Show(errData.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').Remove(0, 'Write-Error: '.length));
+    }
+  }
+
+  /**
+   * Represents the shortcut target script runner watcher.
+   * @typedef {object} ConversionWatcher
+   */
+  return ConversionWatcher;
+}
+
+/**
+ * @returns the MessageBox type.
+ */
+function GetMessageBoxType() {
+  /** @private @constant {string} */
+  var MESSAGE_BOX_TITLE = 'Convert to HTML';
+  /** 
+   * @private @constant
+   * Do not remove repetition. It is there to solve a bug.
+   */
+  var EXPECTED_DIALOGRESULT: System.Array = [DialogResult.Yes, DialogResult.No, DialogResult.No];
+
+  /**
+   * Represents the markdown conversion message box.
+   * @typedef {object} MessageBox
+   * @property {number} WARNING specifies that the dialog shows a warning message.
+   */
+  var MessageBox = { };
+
+  /** @public @static @readonly @property {number} */
+  MessageBox.WARNING = MessageBoxIcon.Exclamation;
+  // Object.defineProperty() method does not work in WSH.
+  // It is not possible in this implementation to make the
+  // property non-writable.
+
+  /**
+   * Show a warning message or an error message box.
+   * The function does not return anything when the message box is an error.
+   * @public @static @method Show @memberof MessageBox
+   * @param {string} message is the message text.
+   * @param {number} [messageType = ERROR_MESSAGE] message box type (Warning/Error).
+   * @returns {string|void} "Yes" or "No" depending on the user's click when the message box is a warning.
+   */
+  MessageBox.Show = function(message, messageType: MessageBoxIcon) {
+    if (messageType != MessageBoxIcon.Error && messageType != MessageBoxIcon.Exclamation) {
+      messageType = MessageBoxIcon.Error;
+    }
+    // The error message box shows the OK button alone.
+    // The warning message box shows the alternative Yes or No buttons.
+    var messageButton: MessageBoxButtons = messageType == MessageBoxIcon.Error ? MessageBoxButtons.OK:MessageBoxButtons.YesNo;
+    try {
+      return EXPECTED_DIALOGRESULT.GetValue(
+        System.Array.BinarySearch(
+          EXPECTED_DIALOGRESULT,
+          System.Windows.Forms.MessageBox.Show(message, MESSAGE_BOX_TITLE, messageButton, messageType)
+        )
+      );
+    } catch (error) { }
+  }
+
+  return MessageBox;
+}
+})();
 }
 
 if (param.Help) {
@@ -73,40 +272,6 @@ if (param.Set || param.Unset) {
 ShowHelp();
 
 /**
- * Start the shortcut target PowerShell script with
- * the path of the selected markdown file as an argument.
- * @param {string} markdown is the input markdown path argument.
- */
-function StartWith(markdown) {
-  var linkPath = GetDynamicLinkPathWith(markdown);
-  var startInfo = new ProcessStartInfo(linkPath);
-  startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-  Process.Start(startInfo).WaitForExit();
-  File.Delete(linkPath);
-}
-
-/**
- * Save and get the dynamic link.
- * @param {string} markdown is the input markdown path argument.
- * @returns {string} the link path.
- */
-function GetDynamicLinkPathWith(markdown) {
-  var link = (new WshShellClass()).CreateShortcut(
-    String.Format('{1}\\{0}.tmp.lnk', Guid.NewGuid(), Environment.ExpandEnvironmentVariables('%TEMP%'))
-  );
-  link.TargetPath = GetPwshPath();
-  link.Arguments = String.Format('-f "{0}" -Markdown "{1}"', ChangeScriptExtension('.ps1'), markdown);
-  link.IconLocation = ChangeScriptExtension('.exe');
-  link.Save();
-  try {
-    return link.FullName;
-  } finally {
-    Marshal.FinalReleaseComObject(link);
-    link = null;
-  }
-}
-
-/**
  * Change the launcher assembly path extension.
  * This change implies that the launcher and the resulting
  * path file reside in the same directory and have the same name.
@@ -115,15 +280,6 @@ function GetDynamicLinkPathWith(markdown) {
  */
 function ChangeScriptExtension(extension) {
   return Path.ChangeExtension(param.ApplicationPath, extension);
-}
-
-/**
- * Get the PowerShell Core application path from the registry.
- * @returns {string} the pwsh.exe full path or an empty string.
- */
-function GetPwshPath() {
-  // The HKLM registry subkey stores the PowerShell Core application path.
-  return Registry.GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe', '', null);
 }
 
 /**

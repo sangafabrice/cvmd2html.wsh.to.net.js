@@ -38,9 +38,6 @@ Function Build-MarkdownToHtmlShortcut {
     Write-Host
     Return
   }
-  # Import the dependency libraries.
-  $WshDllPath = "$PSScriptRoot\Interop.IWshRuntimeLibrary.dll";
-  & "$PSScriptRoot\TlbImp.exe" /nologo /silent 'C:\Windows\System32\wshom.ocx' /out:$WshDllPath /namespace:IWshRuntimeLibrary
   # Set the windows resources file with the resource compiler.
   & "$PSScriptRoot\rc.exe" /nologo /fo $(($TargetInfoResFile = Set-ConvertMd2HtmlExtension '.res')) $(Set-ConvertMd2HtmlExtension '.rc')
   # Compile the launcher script into an .exe file of the same base name.
@@ -49,7 +46,7 @@ Function Build-MarkdownToHtmlShortcut {
   # & "$PSScriptRoot\mgmtclassgen.exe" StdRegProv /l cs /n root\cimv2 /p StdRegProv.cs
   # Compile the generated StdRegProv management class with mgmtclassgen.exe.
   # The class was modified so it can be used in JScript.NET with less effort.
-  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /reference:$WshDllPath /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
+  jsc.exe /nologo /target:$(($IsContinue = $DebugPreference -eq 'Continue') ? 'exe':'winexe') /win32res:$TargetInfoResFile /out:$(($ConvertExe = Set-ConvertMd2HtmlExtension '.exe')) $(Set-ConvertMd2HtmlExtension '.js')
   $Env:Path = $EnvPath
   If ($LASTEXITCODE -eq 0) {
     Write-Host "Output file $ConvertExe written." @HostColorArgs
