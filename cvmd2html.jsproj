@@ -1,0 +1,38 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <VersionMajor>1</VersionMajor>
+    <VersionMinor>0</VersionMinor>
+    <VersionBuild>0</VersionBuild>
+    <VersionRevision>0</VersionRevision>
+    <OutputType Condition=" '$(OutputType)' == '' ">WinExe</OutputType>
+    <AssemblyName>cvmd2html</AssemblyName>
+    <OutputPath>bin</OutputPath>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <SrcFiles Include="src\*.js" />
+    <LibFiles Include="lib\*.dll" />
+    <AppConfigFile Include="app.config" />
+    <ResFile Include="rsc\properties.rc">
+      <Compiled>$(OutputPath)\%(Filename).res</Compiled>
+    </ResFile>
+  </ItemGroup>
+
+  <Target Name="Build">
+    <PropertyGroup>
+      <VersionH>
+#define VER_VERSION $(VersionMajor),$(VersionMinor),$(VersionBuild),$(VersionRevision)
+#define VER_VERSION_STR "$(VersionMajor).$(VersionMinor).$(VersionBuild).$(VersionRevision)"
+      </VersionH>
+      <AssemblyPath>$(OutputPath)\$(AssemblyName).exe</AssemblyPath>
+    </PropertyGroup>
+    <RemoveDir Directories="$(OutputPath)" Condition="Exists('$(OutputPath)')" />
+    <MakeDir Directories="$(OutputPath)" />
+    <Copy SourceFiles="@(AppConfigFile)" DestinationFiles="$(OutputPath)\$(AssemblyName).exe.config" />
+    <Copy SourceFiles="@(LibFiles)" DestinationFiles="@(LibFiles->'$(OutputPath)\%(FileName).%(Extension)')" />
+    <WriteLinesToFile File="@(ResFile->'%(RootDir)\%(Directory)\version.h')" Overwrite="true" Lines="$(VersionH)" />
+    <Exec Command="rc /nologo /fo %(ResFile.Compiled) @(ResFile)" />
+    <Exec Command="jsc /nologo /target:$(OutputType) /win32res:%(ResFile.Compiled) @(LibFiles->'/reference:%(Identity)', ' ') /out:$(AssemblyPath) @(SrcFiles, ' ')" />
+    <Delete Files="%(ResFile.Compiled)" />
+  </Target>
+</Project>

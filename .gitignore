@@ -1,3 +1,5 @@
+bin/*
+!bin/.gitkeep
 *.lnk
 *.exe
 *.res
@@ -15,3 +17,5 @@ System.Buffers.dll
 System.Memory.dll
 System.Numerics.Vectors.dll
 System.Runtime.CompilerServices.Unsafe.dll
+# msbuild cvmd2html.jsproj
+msbuild.exe

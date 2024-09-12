@@ -1,7 +1,7 @@
-#include "Convert-MarkdownToHtml.h"
+#include "version.h"
 
 
-103 ICON "Convert-MarkdownToHtml.ico"
+103 ICON "logo.ico"
 
 
 1 VERSIONINFO
@@ -19,7 +19,7 @@ BLOCK "StringFileInfo"
     VALUE "LegalCopyright", "\xA9 2024 sangafabrice"
     VALUE "CompanyName", "sangafabrice"
     VALUE "FileVersion", VER_VERSION_STR
-    VALUE "FileDescription", "CvMd2Html Launcher"
+    VALUE "FileDescription", "cvmd2html"
   }
 }
 
